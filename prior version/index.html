@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1117">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Portfolio Tracker</title>
+<style>
+:root{--bg:#0e1117;--card:#161b24;--card2:#1c2330;--txt:#e6e9ef;--dim:#8b93a3;--grn:#3fca6b;--red:#ff5d5d;--acc:#4ea1ff;--bord:#252d3d}
+@media (prefers-color-scheme: light){:root{--bg:#f4f6f9;--card:#ffffff;--card2:#eef1f6;--txt:#1a1f29;--dim:#5d6675;--grn:#0d8a3e;--red:#d3383f;--acc:#0b62c4;--bord:#dde3ec}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:10px;padding-bottom:40px}
+h1{font-size:19px;margin:4px 2px 2px}
+.sub{color:var(--dim);font-size:12px;margin:0 2px 10px}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+button{background:var(--acc);border:0;color:#fff;font-size:15px;font-weight:600;padding:9px 18px;border-radius:9px;cursor:pointer}
+button:disabled{opacity:.55}
+button.sm{font-size:12px;padding:5px 12px}
+button.ghost{background:var(--card);color:var(--txt);border:1px solid var(--bord)}
+button.danger{background:var(--red)}
+.pill{font-size:11px;color:var(--dim);background:var(--card);border:1px solid var(--bord);padding:4px 9px;border-radius:20px}
+.tabs{display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tabs button{background:var(--card);color:var(--dim);border:1px solid var(--bord);padding:8px 16px;font-size:13px;white-space:nowrap}
+.tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.acct{background:var(--card);border:1px solid var(--bord);border-radius:12px;margin-bottom:12px;overflow:hidden}
+.ahdr{padding:9px 12px;background:var(--card2);display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.ahdr b{font-size:14px}
+.ahdr .cad{font-size:14px;font-weight:700}
+.ahdr .nat{font-size:11px;color:var(--dim);width:100%}
+.twrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;min-width:680px}
+table.fit{min-width:0}
+th{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--dim);text-align:right;padding:6px 8px;border-bottom:1px solid var(--bord);white-space:nowrap}
+th:first-child{text-align:left}
+td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--bord);white-space:nowrap;font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:0}
+td.nm{text-align:left;max-width:230px;overflow:hidden;text-overflow:ellipsis}
+td.nm .sym{color:var(--dim);font-size:11px}
+.up{color:var(--grn)}.dn{color:var(--red)}
+.day{font-size:11px;display:block}
+.stale{opacity:.6}
+.stale td.nm::after{content:" °";color:#e8b93c}
+.sum{background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:12px;margin-top:16px}
+.sum h2,.card h2{font-size:15px;margin-bottom:8px}
+.card{background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:12px;margin-bottom:12px}
+.grand{font-size:18px;font-weight:800;padding-top:10px;display:flex;justify-content:space-between;border-top:2px solid var(--bord);margin-top:8px}
+.foot{color:var(--dim);font-size:11px;margin-top:14px;line-height:1.6}
+#status{font-size:12px;color:var(--dim);margin:6px 2px}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:7px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.frm{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.frm label{font-size:11px;color:var(--dim);display:block}
+.frm .w2{grid-column:span 2}
+input,select,textarea{width:100%;background:var(--card2);border:1px solid var(--bord);color:var(--txt);border-radius:8px;padding:8px;font-size:14px}
+textarea{font-family:monospace;font-size:12px}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;padding:16px;z-index:50;overflow:auto}
+.overlay .card{width:100%;max-width:520px;margin-top:20px}
+.rowbtns{display:flex;gap:6px;justify-content:flex-end}
+.hint{font-size:11px;color:var(--dim);margin-top:6px;line-height:1.5}
+.cashamt{width:110px;text-align:right}
+</style>
+</head>
+<body>
+<h1>Portfolio Tracker</h1>
+<p class="sub" id="subline">Live-priced holdings &middot; data stored on this device only</p>
+<div class="tabs">
+  <button id="tb-port" class="on" onclick="setTab('port')">Portfolio</button>
+  <button id="tb-hold" onclick="setTab('hold')">Holdings</button>
+  <button id="tb-cash" onclick="setTab('cash')">Cash</button>
+  <button id="tb-data" onclick="setTab('data')">Data</button>
+</div>
+<div class="bar" id="portbar">
+  <button id="btn" onclick="refresh()">Refresh</button>
+  <span class="pill" id="fxpill">FX: &mdash;</span>
+  <span class="pill" id="qpill">quotes: &mdash;</span>
+</div>
+<div id="status">Loading&hellip;</div>
+<div id="view"></div>
+<div id="modal"></div>
+<div class="foot" id="foot">
+° = live quote unavailable, showing fallback price.<br>
+Stock/ETF prices from Yahoo Finance (delayed up to 15&nbsp;min). Fund NAVs update once daily after close; some funds scraped from The Globe and Mail. FX from frankfurter.dev (ECB daily).<br>
+Snapshots auto-save when the app is open (or next opened) after 10:00 and after market close (16:15 ET), Mon&ndash;Fri.
+</div>
+<script>
+'use strict';
+/* ---------------- storage ---------------- */
+const LS_H='pt_holdings', LS_C='pt_cash';
+let HOLDINGS = [], CASH = [];
+try{ HOLDINGS = JSON.parse(localStorage.getItem(LS_H)) || []; }catch(e){}
+try{ CASH = JSON.parse(localStorage.getItem(LS_C)) || []; }catch(e){}
+function saveH(){ localStorage.setItem(LS_H, JSON.stringify(HOLDINGS)); }
+function saveC(){ localStorage.setItem(LS_C, JSON.stringify(CASH)); }
+
+/* IndexedDB for snapshots */
+let dbp = null;
+function db(){
+  if (dbp) return dbp;
+  dbp = new Promise((res,rej)=>{
+    const r = indexedDB.open('ptdb',1);
+    r.onupgradeneeded = ()=>r.result.createObjectStore('snaps',{keyPath:'id'});
+    r.onsuccess = ()=>res(r.result); r.onerror = ()=>rej(r.error);
+  });
+  return dbp;
+}
+async function idb(mode, fn){
+  const d = await db();
+  return new Promise((res,rej)=>{
+    const tx = d.transaction('snaps',mode), st = tx.objectStore('snaps');
+    const q = fn(st);
+    tx.oncomplete = ()=>res(q && q.result); tx.onerror = ()=>rej(tx.error);
+  });
+}
+const putSnap  = s  => idb('readwrite', st=>st.put(s));
+const getSnap  = id => idb('readonly',  st=>st.get(id));
+const delSnap  = id => idb('readwrite', st=>st.delete(id));
+const allSnaps = () => idb('readonly',  st=>st.getAll());
+
+/* ---------------- quote pipeline (verified) ---------------- */
+const STATIC_FX = {CAD:1, USD:1.4224, JPY:0.008742, GBP:1.8833, HKD:0.18134};
+const PROXIES = [
+  {name:'corsproxy', wrap:u=>'https://corsproxy.io/?url='+encodeURIComponent(u)},
+  {name:'jina',      wrap:u=>'https://r.jina.ai/'+u},
+  {name:'codetabs',  wrap:u=>'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(u)},
+  {name:'allorigins',wrap:u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u)},
+];
+let proxyIdx = 0;
+try{ proxyIdx = Math.max(0, PROXIES.findIndex(p=>p.name===localStorage.getItem('proxy'))); }catch(e){}
+let quotes = {}, fx = null, fxSrc = 'static', usedProxy = '—', lastUpdate = null, busy = false;
+
+const gmFunds = ()=>[...new Set(HOLDINGS.filter(h=>!h.y&&h.gm).map(h=>h.gm))];
+const syms    = ()=>[...new Set(HOLDINGS.filter(h=>h.y).map(h=>h.y))];
+
+function fmt(n, dec=0){ return n.toLocaleString('en-CA',{minimumFractionDigits:dec,maximumFractionDigits:dec}); }
+function money(n){ return fmt(n, Math.abs(n)<100?2:0); }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+
+async function fetchVia(url, validate){
+  const order = [...Array(PROXIES.length).keys()].map(i=>(proxyIdx+i)%PROXIES.length);
+  for (const i of order){
+    const p = PROXIES[i];
+    try{
+      const r = await fetch(p.wrap(url), {signal: AbortSignal.timeout(25000)});
+      if(!r.ok) continue;
+      const t = await r.text();
+      const v = validate(t);
+      if (v !== null && v !== undefined){
+        proxyIdx = i; usedProxy = p.name;
+        try{ localStorage.setItem('proxy', p.name); }catch(e){}
+        return v;
+      }
+    }catch(e){}
+  }
+  return null;
+}
+function sparkParse(t){
+  const i = t.search(/\{"spark"/); if(i<0) return null;
+  try{
+    const j = JSON.parse(t.slice(i)); const out = {};
+    for (const r of (j.spark.result||[])){
+      const m = r.response && r.response[0] && r.response[0].meta;
+      if (m && m.regularMarketPrice != null)
+        out[r.symbol] = {p:m.regularMarketPrice, prev:m.chartPreviousClose, ccy:m.currency};
+    }
+    return Object.keys(out).length ? out : null;
+  }catch(e){ return null; }
+}
+function chartParse(t){
+  const i = t.search(/\{"chart"/); if(i<0) return null;
+  try{
+    const m = JSON.parse(t.slice(i)).chart.result[0].meta;
+    return m && m.regularMarketPrice != null ? {p:m.regularMarketPrice, prev:m.chartPreviousClose, ccy:m.currency} : null;
+  }catch(e){ return null; }
+}
+function gmParse(t){
+  let m = t.match(/quote="([^"]*lastPrice[^"]*)"/);
+  if (m){
+    try{
+      const j = JSON.parse(m[1].replace(/&quot;/g,'"'));
+      const p = parseFloat(j.lastPrice), prev = p - parseFloat(j.priceChange);
+      if (!isNaN(p)) return {p, prev:isNaN(prev)?p:prev};
+    }catch(e){}
+  }
+  const nav = t.match(/(\d[\d,]*\.\d{2,6})\s*(?:CAD|USD)\s*[\r\n]+\s*TODAY/i) || t.match(/(\d[\d,]*\.\d{2,6})\s*(?:CAD|USD)/);
+  const pc  = t.match(/Previous Close[^\d]{0,30}(\d[\d,]*\.\d{2,6})/i);
+  if (nav){
+    const p = parseFloat(nav[1].replace(/,/g,''));
+    return {p, prev: pc ? parseFloat(pc[1].replace(/,/g,'')) : p};
+  }
+  return null;
+}
+async function getFX(){
+  try{
+    const r = await fetch('https://api.frankfurter.dev/v1/latest?base=CAD&symbols=USD,JPY,GBP,HKD',{signal:AbortSignal.timeout(12000)});
+    const j = await r.json();
+    fx = {CAD:1}; for (const [k,v] of Object.entries(j.rates)) fx[k] = 1/v;
+    fxSrc = 'frankfurter '+j.date; return;
+  }catch(e){}
+  const q = await fetchVia('https://query1.finance.yahoo.com/v7/finance/spark?symbols=USDCAD=X,JPYCAD=X,GBPCAD=X,HKDCAD=X&range=1d&interval=1d', sparkParse);
+  if (q){
+    fx = {CAD:1, USD:(q['USDCAD=X']||{}).p, JPY:(q['JPYCAD=X']||{}).p, GBP:(q['GBPCAD=X']||{}).p, HKD:(q['HKDCAD=X']||{}).p};
+    for (const k in STATIC_FX) if (!fx[k]) fx[k] = STATIC_FX[k];
+    fxSrc = 'yahoo'; return;
+  }
+  fx = {...STATIC_FX}; fxSrc = 'static (stale!)';
+}
+async function refresh(){
+  if (busy || !HOLDINGS.length) return;
+  busy = true;
+  const btn = document.getElementById('btn'), st = document.getElementById('status');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Updating';
+  quotes = {};
+  st.textContent = 'Fetching FX…';
+  await getFX();
+  const SY = syms(), CH = 20;
+  for (let i=0; i<SY.length; i+=CH){
+    st.textContent = 'Fetching quotes '+Math.min(i+CH,SY.length)+'/'+SY.length+'…';
+    const q = await fetchVia('https://query1.finance.yahoo.com/v7/finance/spark?symbols='+SY.slice(i,i+CH).join(',')+'&range=1d&interval=1d', sparkParse);
+    if (q) Object.assign(quotes, q);
+    await sleep(150);
+  }
+  const missing = SY.filter(s=>!quotes[s]);
+  for (const s of missing.slice(0,15)){
+    st.textContent = 'Retrying '+s+'…';
+    const q = await fetchVia('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(s)+'?range=1d&interval=1d', chartParse);
+    if (q) quotes[s] = q;
+  }
+  for (const code of gmFunds()){
+    st.textContent = 'Fetching fund '+code+'…';
+    const q = await fetchVia('https://www.theglobeandmail.com/investing/markets/funds/'+code+'.CF/', gmParse);
+    if (q) quotes['GM:'+code] = q;
+  }
+  lastUpdate = new Date();
+  busy = false;
+  btn.disabled = false; btn.textContent = 'Refresh';
+  const live = HOLDINGS.filter(h=>getQ(h)).length;
+  document.getElementById('qpill').textContent = 'quotes: '+live+'/'+HOLDINGS.length+' live';
+  document.getElementById('fxpill').textContent = 'USD/CAD '+fx.USD.toFixed(4)+' · '+fxSrc;
+  st.textContent = 'Updated '+lastUpdate.toLocaleString('en-CA')+(usedProxy!=='—'?' · via '+usedProxy:'')+
+    (live<HOLDINGS.length?' · '+(HOLDINGS.length-live)+' rows on fallback prices (°)':'');
+  if (tab==='port') renderPort();
+  await checkAutoSnap();
+}
+function getQ(h){ return h.y ? quotes[h.y] : quotes['GM:'+h.gm]; }
+function rowCalc(h){
+  const q = getQ(h), f = fx || STATIC_FX;
+  let priceNat, day = null, live = false;
+  if (q){
+    const cross = (f[h.qccy]||1)/(f[h.ccy]||1);
+    priceNat = q.p * h.scale * cross;
+    if (q.prev) day = (q.p-q.prev)/q.prev*100;
+    live = true;
+  } else priceNat = h.fp || 0;
+  const mv = h.qty * priceNat;
+  return {mv, priceNat, day, live, gain: mv-h.acb, pct: h.acb>0 ? (mv-h.acb)/h.acb*100 : 0};
+}
+const acctKey = x => x.entity+(x.broker?' · '+x.broker:'')+(x.account?' '+x.account:'')+' ('+(x.atype||'')+')';
+
+/* ---------------- snapshots ---------------- */
+function torontoNow(){
+  const parts = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Toronto',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,weekday:'short'}).formatToParts(new Date());
+  const g = t=>(parts.find(p=>p.type===t)||{}).value||'';
+  return {date:g('year')+'-'+g('month')+'-'+g('day'), hm:(g('hour')==='24'?'00':g('hour'))+':'+g('minute'), dow:g('weekday')};
+}
+function buildRows(){
+  const f = fx || STATIC_FX, rows = [];
+  for (const h of HOLDINGS){
+    const c = rowCalc(h);
+    rows.push({entity:h.entity,broker:h.broker,account:h.account,atype:h.atype,type:h.cls||'Holding',
+      name:h.name,sym:h.y||h.gm||'',ccy:h.ccy,qty:h.qty,price:c.priceNat,mv:c.mv,mvCAD:c.mv*(f[h.ccy]||1),live:c.live});
+  }
+  for (const c of CASH){
+    rows.push({entity:c.entity,broker:c.broker,account:c.account,atype:c.atype,type:'Cash',
+      name:'Cash',sym:'',ccy:c.ccy,qty:'',price:'',mv:c.amount,mvCAD:c.amount*(f[c.ccy]||1),live:true});
+  }
+  return rows;
+}
+async function saveSnap(slot, silent){
+  const t = torontoNow(), f = fx || STATIC_FX;
+  const rows = buildRows();
+  const s = {
+    id: slot==='MANUAL' ? t.date+'|MANUAL|'+Date.now() : t.date+'|'+slot,
+    date: t.date, slot, capturedAt: t.date+' '+t.hm+' ET',
+    fx: {...f}, fxSrc,
+    live: rows.filter(r=>r.live).length, total: rows.length,
+    grandCAD: rows.reduce((a,r)=>a+r.mvCAD,0),
+    rows: rows.map(r=>[r.entity,r.broker,r.account,r.atype,r.type,r.name,r.sym,r.ccy,r.qty,r.price,r.mv,r.mvCAD])
+  };
+  await putSnap(s);
+  if (!silent){
+    document.getElementById('status').textContent = 'Snapshot saved: '+s.date+' '+slot+' · CA$ '+money(s.grandCAD);
+    if (tab==='data') renderData();
+  }
+  return s;
+}
+async function checkAutoSnap(){
+  if (!HOLDINGS.length || busy) return;
+  const t = torontoNow();
+  if (t.dow==='Sat' || t.dow==='Sun') return;
+  let want = null;
+  if (t.hm >= '16:15') want = 'CLOSE';
+  else if (t.hm >= '10:00') want = 'AM';
+  if (!want) return;
+  if (await getSnap(t.date+'|'+want)) return;
+  // need fresh quotes: if never refreshed or older than 10 min, refresh first (refresh re-calls checkAutoSnap)
+  if (!lastUpdate || (Date.now()-lastUpdate.getTime()) > 10*60*1000){
+    if (!refreshQueued){ refreshQueued = true; await refresh(); refreshQueued = false; }
+    if (!lastUpdate) return; // refresh failed entirely
+    if (await getSnap(t.date+'|'+want)) return;
+  }
+  await saveSnap(want);
+  document.getElementById('status').textContent += ' (auto '+want+')';
+}
+let refreshQueued = false;
+
+/* ---------------- CSV export ---------------- */
+function csvCell(v){
+  if (typeof v === 'number') return String(Math.round(v*10000)/10000);
+  v = String(v==null?'':v);
+  return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v;
+}
+function download(name, text, mime){
+  const blob = new Blob(['﻿'+text], {type: mime||'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+}
+async function exportDetailCSV(){
+  const snaps = (await allSnaps()).sort((a,b)=>a.id<b.id?-1:1);
+  if (!snaps.length){ alert('No snapshots saved yet.'); return; }
+  const head = ['Date','Slot','CapturedAt','Entity','Broker','Account','AcctType','Type','Name','Symbol','Ccy','Qty','Price','ValueNative','ValueCAD','USDCAD'];
+  const lines = [head.join(',')];
+  for (const s of snaps)
+    for (const r of s.rows)
+      lines.push([s.date,s.slot,s.capturedAt,...r, s.fx.USD].map(csvCell).join(','));
+  download('portfolio_history_'+torontoNow().date+'.csv', lines.join('\n'));
+}
+async function exportTotalsCSV(){
+  const snaps = (await allSnaps()).sort((a,b)=>a.id<b.id?-1:1);
+  if (!snaps.length){ alert('No snapshots saved yet.'); return; }
+  const lines = ['Date,Slot,CapturedAt,Entity,Broker,Account,AcctType,ValueCAD,GrandTotalCAD,USDCAD'];
+  for (const s of snaps){
+    const by = new Map();
+    for (const r of s.rows){
+      const k = r.slice(0,4).join('\u001f');
+      by.set(k, (by.get(k)||0) + (r[11]||0));
+    }
+    for (const [k,v] of by){
+      const [e,b,a,at] = k.split('\u001f');
+      lines.push([s.date,s.slot,s.capturedAt,e,b,a,at,v,s.grandCAD,s.fx.USD].map(csvCell).join(','));
+    }
+  }
+  download('portfolio_totals_'+torontoNow().date+'.csv', lines.join('\n'));
+}
+async function exportBackup(){
+  const snaps = await allSnaps();
+  download('portfolio_backup_'+torontoNow().date+'.json',
+    JSON.stringify({holdings:HOLDINGS, cash:CASH, snapshots:snaps}, null, 1),
+    'application/json');
+}
+
+/* ---------------- import ---------------- */
+function applyData(obj){
+  let h = Array.isArray(obj) ? obj : obj.holdings;
+  if (!Array.isArray(h)) throw new Error('No holdings array found');
+  for (const x of h) if (typeof x.name!=='string' || typeof x.qty!=='number') throw new Error('Invalid holding row');
+  HOLDINGS = h; saveH();
+  if (Array.isArray(obj.cash)){ CASH = obj.cash; saveC(); }
+  return obj.snapshots;
+}
+async function importFile(file, isRestore){
+  try{
+    const obj = JSON.parse(await file.text());
+    const snaps = applyData(obj);
+    if (isRestore && Array.isArray(snaps)) for (const s of snaps) await putSnap(s);
+    quotes = {};
+    setTab('port');
+    document.getElementById('status').textContent = 'Imported '+HOLDINGS.length+' holdings'+(CASH.length?', '+CASH.length+' cash entries':'')+'. Fetching prices…';
+    refresh();
+  }catch(e){ alert('Import failed: '+e.message); }
+}
+
+/* ---------------- views ---------------- */
+let tab = 'port';
+function setTab(t){
+  tab = t;
+  for (const id of ['port','hold','cash','data']) document.getElementById('tb-'+id).className = (id===t?'on':'');
+  document.getElementById('portbar').style.display = (t==='port') ? 'flex' : 'none';
+  ({port:renderPort, hold:renderHold, cash:renderCash, data:renderData})[t]();
+}
+const view = ()=>document.getElementById('view');
+
+function renderPort(){
+  if (!HOLDINGS.length){ renderFirstRun(); return; }
+  const f = fx || STATIC_FX;
+  const groups = new Map();
+  for (const h of HOLDINGS){
+    const k = acctKey(h);
+    if (!groups.has(k)) groups.set(k, {rows:[], cash:[]});
+    groups.get(k).rows.push(h);
+  }
+  for (const c of CASH){
+    const k = acctKey(c);
+    if (!groups.has(k)) groups.set(k, {rows:[], cash:[]});
+    groups.get(k).cash.push(c);
+  }
+  let html = '', grandCAD = 0, natTotals = [];
+  for (const [k, g] of groups){
+    const calcs = g.rows.map(h=>({h, c:rowCalc(h)}));
+    calcs.sort((a,b)=>b.c.mv*(f[b.h.ccy]||1) - a.c.mv*(f[a.h.ccy]||1));
+    const byCcy = {}; let acctCAD = 0;
+    for (const {h,c} of calcs){ byCcy[h.ccy]=(byCcy[h.ccy]||0)+c.mv; acctCAD += c.mv*(f[h.ccy]||1); }
+    for (const c of g.cash){ byCcy[c.ccy]=(byCcy[c.ccy]||0)+c.amount; acctCAD += c.amount*(f[c.ccy]||1); }
+    grandCAD += acctCAD;
+    natTotals.push({k, byCcy, acctCAD});
+    html += '<div class="acct"><div class="ahdr"><b>'+esc(k)+'</b><span class="cad">CA$ '+money(acctCAD)+'</span><span class="nat">'+
+      Object.entries(byCcy).map(([c,v])=>c+' '+money(v)).join(' + ')+'</span></div><div class="twrap"><table><tr><th>Security</th><th>Ccy</th><th>Shares</th><th>Book</th><th>Price</th><th>Value</th><th>Gain</th><th>Gain %</th></tr>';
+    for (const {h,c} of calcs){
+      const cls = c.gain>=0?'up':'dn';
+      const dayHtml = c.day==null?'':'<span class="day '+(c.day>=0?'up':'dn')+'">'+(c.day>=0?'+':'')+c.day.toFixed(2)+'%</span>';
+      html += '<tr'+(c.live?'':' class="stale"')+'><td class="nm">'+esc(h.name)+'<br><span class="sym">'+esc(h.y||h.gm||'')+' · '+esc(h.exch||'')+'</span></td>'+
+        '<td>'+h.ccy+'</td><td>'+fmt(h.qty, h.qty%1?4:0)+'</td><td>'+money(h.acb)+'</td>'+
+        '<td>'+money(c.priceNat)+dayHtml+'</td><td><b>'+money(c.mv)+'</b></td>'+
+        '<td class="'+cls+'">'+(c.gain>=0?'+':'')+money(c.gain)+'</td><td class="'+cls+'">'+(c.gain>=0?'+':'')+c.pct.toFixed(1)+'%</td></tr>';
+    }
+    for (const c of g.cash)
+      html += '<tr><td class="nm">Cash</td><td>'+esc(c.ccy)+'</td><td></td><td></td><td></td><td><b>'+money(c.amount)+'</b></td><td></td><td></td></tr>';
+    html += '</table></div></div>';
+  }
+  html += '<div class="sum"><h2>Totals by account (native currency)</h2><table class="fit">';
+  for (const t of natTotals)
+    html += '<tr><td class="nm">'+esc(t.k)+'</td><td>'+Object.entries(t.byCcy).map(([c,v])=>c+' '+money(v)).join('<br>')+'</td><td><b>CA$ '+money(t.acctCAD)+'</b></td></tr>';
+  html += '</table><div class="grand"><span>TOTAL (CAD)</span><span>CA$ '+money(grandCAD)+'</span></div>'+
+    '<div style="color:var(--dim);font-size:11px;margin-top:6px">at USD/CAD '+f.USD.toFixed(4)+', JPY/CAD '+f.JPY.toFixed(5)+', GBP/CAD '+f.GBP.toFixed(4)+', HKD/CAD '+f.HKD.toFixed(4)+' · '+fxSrc+'</div></div>';
+  view().innerHTML = html;
+}
+
+function renderFirstRun(){
+  view().innerHTML =
+    '<div class="card"><h2>Welcome — load your portfolio</h2>'+
+    '<p class="hint">This app keeps all data on this device. Import your <b>portfolio-data.json</b> file (transfer it to the phone via email, Google Drive or USB first), or restore a backup.</p>'+
+    '<div style="margin-top:10px"><input type="file" accept=".json,application/json" onchange="importFile(this.files[0], true)"></div>'+
+    '<p class="hint">You can also start empty and add holdings by hand on the Holdings tab.</p></div>';
+  document.getElementById('status').textContent = 'No holdings loaded yet.';
+}
+
+function dlist(id, vals){
+  return '<datalist id="'+id+'">'+[...new Set(vals.filter(Boolean))].map(v=>'<option value="'+esc(v)+'">').join('')+'</datalist>';
+}
+function renderHold(){
+  const groups = new Map();
+  HOLDINGS.forEach((h,i)=>{
+    const k = acctKey(h);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push({h,i});
+  });
+  let html = '<div class="bar"><button onclick="editHold(-1)">+ Add holding</button></div>';
+  for (const [k, rows] of groups){
+    html += '<div class="acct"><div class="ahdr"><b>'+esc(k)+'</b></div><div class="twrap"><table><tr><th>Security</th><th>Ccy</th><th>Shares</th><th>Book</th><th></th></tr>';
+    for (const {h,i} of rows){
+      html += '<tr><td class="nm">'+esc(h.name)+'<br><span class="sym">'+esc(h.y||h.gm||'')+'</span></td><td>'+esc(h.ccy)+'</td><td>'+fmt(h.qty,h.qty%1?4:0)+'</td><td>'+money(h.acb)+'</td>'+
+        '<td><div class="rowbtns"><button class="sm ghost" onclick="editHold('+i+')">Edit</button><button class="sm danger" onclick="delHold('+i+')">Del</button></div></td></tr>';
+    }
+    html += '</table></div></div>';
+  }
+  if (!HOLDINGS.length) html += '<div class="card">No holdings yet.</div>';
+  view().innerHTML = html;
+}
+function delHold(i){
+  if (!confirm('Delete "'+HOLDINGS[i].name+'"?')) return;
+  HOLDINGS.splice(i,1); saveH(); renderHold();
+}
+function editHold(i){
+  const h = i>=0 ? HOLDINGS[i] : {entity:'',broker:'',account:'',atype:'Non-Reg',cls:'Equity',name:'',ccy:'CAD',qty:0,acb:0,y:'',gm:'',exch:'',qccy:'',scale:1,fp:0};
+  const F = (label,id,val,attrs,cls)=>'<div class="'+(cls||'')+'"><label>'+label+'</label><input id="f_'+id+'" value="'+esc(val)+'" '+(attrs||'')+'></div>';
+  document.getElementById('modal').innerHTML =
+    '<div class="overlay"><div class="card"><h2>'+(i>=0?'Edit':'Add')+' holding</h2><div class="frm">'+
+    F('Owner / entity','entity',h.entity,'list="dl_e"')+F('Broker','broker',h.broker,'list="dl_b"')+
+    F('Account #','account',h.account,'list="dl_a"')+F('Account type','atype',h.atype,'list="dl_t"')+
+    F('Security name','name',h.name,'','w2')+
+    '<div><label>Class</label><select id="f_cls">'+['Equity','ETF','Fund'].map(c=>'<option'+(h.cls===c?' selected':'')+'>'+c+'</option>').join('')+'</select></div>'+
+    F('Holding currency','ccy',h.ccy,'list="dl_c"')+
+    F('Shares / units','qty',h.qty,'type="number" step="any"')+F('Book cost (total)','acb',h.acb,'type="number" step="any"')+
+    F('Yahoo symbol (e.g. CM.TO, AAPL)','y',h.y||'','','w2')+
+    F('G&M fund code (if no Yahoo symbol)','gm',h.gm||'')+F('Exchange','exch',h.exch||'')+
+    F('Quote currency (blank = same)','qccy',h.qccy||'')+F('Price scale (PSH.L = 0.01)','scale',h.scale==null?1:h.scale,'type="number" step="any"')+
+    F('Fallback price (used if quote fails)','fp',h.fp||0,'type="number" step="any"','w2')+
+    '</div><div class="rowbtns" style="margin-top:12px"><button class="ghost" onclick="closeModal()">Cancel</button><button onclick="saveHold('+i+')">Save</button></div>'+
+    dlist('dl_e',HOLDINGS.map(x=>x.entity))+dlist('dl_b',HOLDINGS.map(x=>x.broker))+
+    dlist('dl_a',HOLDINGS.map(x=>x.account))+dlist('dl_t',HOLDINGS.map(x=>x.atype).concat(['Non-Reg','TFSA','RRSP','RESP']))+
+    dlist('dl_c',['CAD','USD','JPY','GBP','HKD'])+
+    '</div></div>';
+}
+function closeModal(){ document.getElementById('modal').innerHTML=''; }
+function saveHold(i){
+  const g = id=>document.getElementById('f_'+id).value.trim();
+  const n = id=>parseFloat(document.getElementById('f_'+id).value)||0;
+  const h = {entity:g('entity'),broker:g('broker'),account:g('account'),atype:g('atype'),
+    cls:document.getElementById('f_cls').value,name:g('name'),ccy:g('ccy')||'CAD',
+    qty:n('qty'),acb:n('acb'),exch:g('exch'),scale:n('scale')||1,fp:n('fp')};
+  if (g('y')) h.y = g('y');
+  if (g('gm')) h.gm = g('gm');
+  h.qccy = g('qccy') || h.ccy;
+  if (!h.name){ alert('Name is required.'); return; }
+  if (!h.y && !h.gm && !h.fp){ alert('Give a Yahoo symbol, a G&M fund code, or a fallback price.'); return; }
+  if (i>=0) HOLDINGS[i] = h; else HOLDINGS.push(h);
+  saveH(); closeModal(); renderHold();
+}
+
+function renderCash(){
+  let html = '<div class="card"><h2>Cash by account</h2><p class="hint">Cash is included in account totals, snapshots and CSV exports. Edit amounts directly, then Save.</p>'+
+    '<div class="twrap"><table class="fit"><tr><th>Account</th><th>Ccy</th><th>Amount</th><th></th></tr>';
+  CASH.forEach((c,i)=>{
+    html += '<tr><td class="nm">'+esc(acctKey(c))+'</td><td>'+esc(c.ccy)+'</td>'+
+      '<td><input class="cashamt" id="cash_'+i+'" type="number" step="any" value="'+c.amount+'"></td>'+
+      '<td><button class="sm danger" onclick="delCash('+i+')">Del</button></td></tr>';
+  });
+  html += '</table></div>'+(CASH.length?'<div class="rowbtns" style="margin-top:10px"><button onclick="saveCashAmts()">Save amounts</button></div>':'<p class="hint">No cash entries yet.</p>')+'</div>';
+  html += '<div class="card"><h2>Add cash entry</h2><div class="frm">'+
+    '<div><label>Owner / entity</label><input id="c_entity" list="dl_e"></div>'+
+    '<div><label>Broker</label><input id="c_broker" list="dl_b"></div>'+
+    '<div><label>Account #</label><input id="c_account" list="dl_a"></div>'+
+    '<div><label>Account type</label><input id="c_atype" list="dl_t" value="Non-Reg"></div>'+
+    '<div><label>Currency</label><input id="c_ccy" list="dl_c" value="CAD"></div>'+
+    '<div><label>Amount</label><input id="c_amount" type="number" step="any" value="0"></div>'+
+    '</div><div class="rowbtns" style="margin-top:12px"><button onclick="addCash()">Add</button></div>'+
+    dlist('dl_e',HOLDINGS.map(x=>x.entity).concat(CASH.map(x=>x.entity)))+
+    dlist('dl_b',HOLDINGS.map(x=>x.broker).concat(CASH.map(x=>x.broker)))+
+    dlist('dl_a',HOLDINGS.map(x=>x.account).concat(CASH.map(x=>x.account)))+
+    dlist('dl_t',HOLDINGS.map(x=>x.atype).concat(['Non-Reg','TFSA','RRSP','RESP']))+
+    dlist('dl_c',['CAD','USD','JPY','GBP','HKD'])+'</div>';
+  view().innerHTML = html;
+}
+function saveCashAmts(){
+  CASH.forEach((c,i)=>{ c.amount = parseFloat(document.getElementById('cash_'+i).value)||0; });
+  saveC(); document.getElementById('status').textContent = 'Cash amounts saved.'; renderCash();
+}
+function delCash(i){ CASH.splice(i,1); saveC(); renderCash(); }
+function addCash(){
+  const g = id=>document.getElementById('c_'+id).value.trim();
+  const c = {entity:g('entity'),broker:g('broker'),account:g('account'),atype:g('atype'),ccy:g('ccy')||'CAD',amount:parseFloat(g('amount'))||0};
+  if (!c.entity && !c.account){ alert('Give at least an owner or account #.'); return; }
+  CASH.push(c); saveC(); renderCash();
+}
+
+async function renderData(){
+  const snaps = (await allSnaps()).sort((a,b)=>a.id<b.id?1:-1);
+  let html = '<div class="card"><h2>Snapshots ('+snaps.length+')</h2>'+
+    '<p class="hint">Auto-saved after 10:00 and after market close (16:15 ET) on weekdays, whenever the app is next open. Prices after close are the official closing prices, so an evening catch-up is exact.</p>'+
+    '<div class="bar" style="margin-top:8px"><button class="sm" onclick="manualSnap()">Save snapshot now</button></div>'+
+    '<div class="twrap"><table class="fit"><tr><th>Date</th><th>Slot</th><th>Captured</th><th>Live</th><th>Total CAD</th><th></th></tr>';
+  for (const s of snaps.slice(0,30))
+    html += '<tr><td class="nm">'+s.date+'</td><td>'+s.slot+'</td><td>'+esc(s.capturedAt)+'</td><td>'+s.live+'/'+s.total+'</td><td><b>'+money(s.grandCAD)+'</b></td>'+
+      '<td><button class="sm danger" onclick="rmSnap(\''+s.id+'\')">Del</button></td></tr>';
+  html += '</table></div>'+(snaps.length>30?'<p class="hint">Showing latest 30 of '+snaps.length+'.</p>':'')+'</div>';
+  html += '<div class="card"><h2>Export</h2><div class="bar">'+
+    '<button class="sm" onclick="exportDetailCSV()">CSV — full detail</button>'+
+    '<button class="sm" onclick="exportTotalsCSV()">CSV — account totals</button>'+
+    '<button class="sm ghost" onclick="exportBackup()">Backup everything (JSON)</button></div>'+
+    '<p class="hint">CSV files include one row per holding (or account) per snapshot date. Files go to your Downloads folder.</p></div>';
+  html += '<div class="card"><h2>Import / restore</h2>'+
+    '<p class="hint">Load a portfolio-data.json or a backup JSON. Holdings and cash are replaced; snapshots in a backup are merged in.</p>'+
+    '<input type="file" accept=".json,application/json" onchange="importFile(this.files[0], true)"></div>';
+  view().innerHTML = html;
+}
+async function manualSnap(){
+  if (!HOLDINGS.length){ alert('No holdings loaded.'); return; }
+  if (!lastUpdate){ await refresh(); }
+  await saveSnap('MANUAL');
+  renderData();
+}
+async function rmSnap(id){ if (confirm('Delete snapshot '+id.split('|').slice(0,2).join(' ')+'?')){ await delSnap(id); renderData(); } }
+
+/* ---------------- boot ---------------- */
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+setTab('port');
+if (HOLDINGS.length){
+  document.getElementById('status').textContent = 'Tap Refresh to load live prices.';
+  refresh();
+}
+setInterval(checkAutoSnap, 60*1000);
+document.addEventListener('visibilitychange', ()=>{ if (!document.hidden) checkAutoSnap(); });
+</script>
+</body>
+</html>
