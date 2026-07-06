@@ -92,8 +92,8 @@ const LS_H='pt_holdings', LS_C='pt_cash';
 let HOLDINGS = [], CASH = [];
 try{ HOLDINGS = JSON.parse(localStorage.getItem(LS_H)) || []; }catch(e){}
 try{ CASH = JSON.parse(localStorage.getItem(LS_C)) || []; }catch(e){}
-function saveH(){ localStorage.setItem(LS_H, JSON.stringify(HOLDINGS)); }
-function saveC(){ localStorage.setItem(LS_C, JSON.stringify(CASH)); }
+function saveH(){ localStorage.setItem(LS_H, JSON.stringify(HOLDINGS)); schedulePush(); }
+function saveC(){ localStorage.setItem(LS_C, JSON.stringify(CASH)); schedulePush(); }
 
 /* IndexedDB for snapshots */
 let dbp = null;
@@ -118,6 +118,130 @@ const putSnap  = s  => idb('readwrite', st=>st.put(s));
 const getSnap  = id => idb('readonly',  st=>st.get(id));
 const delSnap  = id => idb('readwrite', st=>st.delete(id));
 const allSnaps = () => idb('readonly',  st=>st.getAll());
+
+/* ---------------- cloud sync (encrypted private Gist) ---------------- */
+/* Holdings & cash sync across devices. Data is AES-256-GCM encrypted client-side
+   with a passphrase before it ever leaves the device — GitHub only stores ciphertext.
+   Snapshot history is intentionally NOT synced (stays local per device; use the
+   full JSON backup/restore below if you want to merge history manually). */
+const LS_TOK='pt_sync_token', LS_GIST='pt_sync_gist', LS_PASS='pt_sync_pass', LS_SALT='pt_sync_salt', LS_UPD='pt_sync_updated';
+let SYNC = {
+  token: localStorage.getItem(LS_TOK) || '',
+  gist:  localStorage.getItem(LS_GIST) || '',
+  pass:  localStorage.getItem(LS_PASS) || '',
+  salt:  localStorage.getItem(LS_SALT) || '',
+};
+function syncOn(){ return !!(SYNC.token && SYNC.gist && SYNC.pass); }
+function b64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function unb64(s){ return Uint8Array.from(atob(s), c=>c.charCodeAt(0)); }
+async function deriveKey(pass, saltB64){
+  const enc = new TextEncoder();
+  const base = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt:unb64(saltB64), iterations:150000, hash:'SHA-256'},
+    base, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']
+  );
+}
+async function encryptBlob(obj, pass, saltB64){
+  const key = await deriveKey(pass, saltB64);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = new TextEncoder().encode(JSON.stringify(obj));
+  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, data);
+  return {v:1, salt:saltB64, iv:b64(iv), ct:b64(ct)};
+}
+async function decryptBlob(blob, pass){
+  const key = await deriveKey(pass, blob.salt);
+  const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv:unb64(blob.iv)}, key, unb64(blob.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+const GIST_FILE = 'portfolio.sync.json';
+async function ghGist(method, path, body){
+  const r = await fetch('https://api.github.com/gists'+path, {
+    method, headers:{
+      'Authorization':'Bearer '+SYNC.token,
+      'Accept':'application/vnd.github+json',
+      ...(body?{'Content-Type':'application/json'}:{})
+    },
+    body: body?JSON.stringify(body):undefined
+  });
+  if (!r.ok) throw new Error('GitHub API '+r.status+': '+(await r.text()).slice(0,200));
+  return r.json();
+}
+async function syncCreate(pass){
+  const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+  const updatedAt = new Date().toISOString();
+  const blob = await encryptBlob({holdings:HOLDINGS, cash:CASH, updatedAt}, pass, salt);
+  const g = await ghGist('POST', '', {description:'Portfolio Tracker sync (encrypted — do not edit on github.com)', public:false,
+    files:{[GIST_FILE]:{content: JSON.stringify(blob)}}});
+  SYNC = {token:SYNC.token, gist:g.id, pass, salt};
+  localStorage.setItem(LS_GIST, g.id); localStorage.setItem(LS_PASS, pass); localStorage.setItem(LS_SALT, salt);
+  localStorage.setItem(LS_UPD, updatedAt);
+  return g.id;
+}
+async function syncPush(){
+  if (!syncOn()) return;
+  const updatedAt = new Date().toISOString();
+  const blob = await encryptBlob({holdings:HOLDINGS, cash:CASH, updatedAt}, SYNC.pass, SYNC.salt);
+  await ghGist('PATCH', '/'+SYNC.gist, {files:{[GIST_FILE]:{content: JSON.stringify(blob)}}});
+  localStorage.setItem(LS_UPD, updatedAt);
+}
+async function syncPull(apply){
+  if (!SYNC.token || !SYNC.gist || !SYNC.pass) return null;
+  const g = await ghGist('GET', '/'+SYNC.gist);
+  const f = g.files && g.files[GIST_FILE]; if (!f) return null;
+  const blob = JSON.parse(f.content);
+  if (!SYNC.salt){ SYNC.salt = blob.salt; localStorage.setItem(LS_SALT, blob.salt); }
+  const data = await decryptBlob(blob, SYNC.pass);
+  const localUpd = localStorage.getItem(LS_UPD) || '';
+  if (apply && data.updatedAt > localUpd){
+    HOLDINGS = data.holdings||[]; CASH = data.cash||[];
+    localStorage.setItem(LS_H, JSON.stringify(HOLDINGS));
+    localStorage.setItem(LS_C, JSON.stringify(CASH));
+    localStorage.setItem(LS_UPD, data.updatedAt);
+    quotes = {};
+    if (tab==='port') renderPort(); if (tab==='hold') renderHold(); if (tab==='cash') renderCash();
+  }
+  return data;
+}
+let pushTimer = null;
+function schedulePush(){
+  if (!syncOn()) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(()=>{ syncPush().catch(e=>console.warn('sync push failed', e)); }, 4000);
+}
+async function uiSyncSetup(){
+  const tok = document.getElementById('s_tok').value.trim();
+  const pass = document.getElementById('s_pass').value;
+  const gist = document.getElementById('s_gist').value.trim();
+  if (!tok || !pass){ alert('Token and passphrase are required.'); return; }
+  SYNC.token = tok; localStorage.setItem(LS_TOK, tok);
+  try{
+    if (gist){
+      SYNC.gist = gist; SYNC.pass = pass;
+      localStorage.setItem(LS_GIST, gist); localStorage.setItem(LS_PASS, pass);
+      const data = await syncPull(true);
+      if (!data) throw new Error('Gist has no sync file on it — check the Gist ID.');
+    } else {
+      const id = await syncCreate(pass);
+      alert('Sync gist created.\n\nGist ID:\n'+id+'\n\nEnter this ID together with the same passphrase on your other device to connect it.');
+    }
+    renderData();
+  }catch(e){ alert('Sync setup failed: '+e.message); }
+}
+async function uiSyncNow(){
+  const st = document.getElementById('syncstat');
+  if (st) st.textContent = 'Syncing…';
+  try{
+    await syncPush(); await syncPull(true);
+    if (document.getElementById('syncstat')) document.getElementById('syncstat').textContent = 'Synced '+new Date().toLocaleTimeString('en-CA');
+  }catch(e){ if (document.getElementById('syncstat')) document.getElementById('syncstat').textContent = 'Sync failed: '+e.message; }
+}
+function uiSyncOff(){
+  if (!confirm('Disconnect cloud sync on this device? Local holdings/cash stay as-is; the gist itself is untouched.')) return;
+  SYNC = {token:'',gist:'',pass:'',salt:''};
+  [LS_TOK,LS_GIST,LS_PASS,LS_SALT,LS_UPD].forEach(k=>localStorage.removeItem(k));
+  renderData();
+}
 
 /* ---------------- quote pipeline (verified) ---------------- */
 const STATIC_FX = {CAD:1, USD:1.4224, JPY:0.008742, GBP:1.8833, HKD:0.18134};
@@ -548,6 +672,23 @@ function addCash(){
   CASH.push(c); saveC(); renderCash();
 }
 
+function syncCard(){
+  if (syncOn()){
+    return '<div class="card"><h2>Cloud sync</h2>'+
+      '<p class="hint">Connected — holdings &amp; cash sync automatically via an encrypted private Gist (id '+esc(SYNC.gist.slice(0,10))+'&hellip;). Snapshot history stays local to this device.</p>'+
+      '<div class="bar"><button class="sm" onclick="uiSyncNow()">Sync now</button><button class="sm ghost" onclick="uiSyncOff()">Disconnect</button></div>'+
+      '<p class="hint" id="syncstat"></p></div>';
+  }
+  return '<div class="card"><h2>Cloud sync (encrypted)</h2>'+
+    '<p class="hint">Sync holdings &amp; cash between devices via a private GitHub Gist. Data is AES-256 encrypted client-side before upload — GitHub only ever sees ciphertext, not your holdings.</p>'+
+    '<div class="frm">'+
+    '<div class="w2"><label>GitHub token (classic, "gist" scope only)</label><input id="s_tok" type="password" placeholder="ghp_..."></div>'+
+    '<div class="w2"><label>Passphrase (make one up; needed to decrypt on every device)</label><input id="s_pass" type="password"></div>'+
+    '<div class="w2"><label>Existing Gist ID (leave blank on your FIRST device only)</label><input id="s_gist" placeholder="e.g. 9f8a3b2c1d..."></div>'+
+    '</div><div class="rowbtns" style="margin-top:10px"><button onclick="uiSyncSetup()">Connect / Create</button></div>'+
+    '<p class="hint">Create a token at <a href="https://github.com/settings/tokens/new?scopes=gist&description=portfolio-sync" target="_blank" style="color:var(--acc)">github.com/settings/tokens/new</a> — tick only the "gist" scope. On your first device leave Gist ID blank (one is created for you); copy the ID shown and enter it with the same passphrase on your other device.</p></div>';
+}
+
 async function renderData(){
   const snaps = (await allSnaps()).sort((a,b)=>a.id<b.id?1:-1);
   let html = '<div class="card"><h2>Snapshots ('+snaps.length+')</h2>'+
@@ -563,6 +704,7 @@ async function renderData(){
     '<button class="sm" onclick="exportTotalsCSV()">CSV — account totals</button>'+
     '<button class="sm ghost" onclick="exportBackup()">Backup everything (JSON)</button></div>'+
     '<p class="hint">CSV files include one row per holding (or account) per snapshot date. Files go to your Downloads folder.</p></div>';
+  html += syncCard();
   html += '<div class="card"><h2>Import / restore</h2>'+
     '<p class="hint">Load a portfolio-data.json or a backup JSON. Holdings and cash are replaced; snapshots in a backup are merged in.</p>'+
     '<input type="file" accept=".json,application/json" onchange="importFile(this.files[0], true)"></div>';
@@ -583,8 +725,12 @@ if (HOLDINGS.length){
   document.getElementById('status').textContent = 'Tap Refresh to load live prices.';
   refresh();
 }
+if (syncOn()) syncPull(true).catch(e=>console.warn('sync pull failed', e));
 setInterval(checkAutoSnap, 60*1000);
-document.addEventListener('visibilitychange', ()=>{ if (!document.hidden) checkAutoSnap(); });
+setInterval(()=>{ if (syncOn()) syncPull(true).catch(e=>console.warn('sync pull failed', e)); }, 5*60*1000);
+document.addEventListener('visibilitychange', ()=>{
+  if (!document.hidden){ checkAutoSnap(); if (syncOn()) syncPull(true).catch(e=>console.warn('sync pull failed', e)); }
+});
 </script>
 </body>
 </html>
