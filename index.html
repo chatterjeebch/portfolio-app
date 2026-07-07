@@ -98,6 +98,7 @@ textarea{font-family:monospace;font-size:12px}
 <div class="tabs">
   <button id="tb-snap" onclick="setTab('snap')">Snapshot</button>
   <button id="tb-sum" onclick="setTab('sum')">Summary</button>
+  <button id="tb-tax" onclick="setTab('tax')">Tax</button>
   <button id="tb-port" class="on" onclick="setTab('port')">Portfolio</button>
   <button id="tb-hold" onclick="setTab('hold')">Holdings</button>
   <button id="tb-cash" onclick="setTab('cash')">Cash</button>
@@ -230,7 +231,7 @@ async function syncPull(apply){
     localStorage.setItem(LS_C, JSON.stringify(CASH));
     localStorage.setItem(LS_UPD, data.updatedAt);
     quotes = {};
-    if (tab==='port') renderPort(); if (tab==='hold') renderHold(); if (tab==='cash') renderCash(); if (tab==='snap') renderSnap(); if (tab==='sum') renderSummary();
+    if (tab==='port') renderPort(); if (tab==='hold') renderHold(); if (tab==='cash') renderCash(); if (tab==='snap') renderSnap(); if (tab==='sum') renderSummary(); if (tab==='tax') renderTax();
   }
   return data;
 }
@@ -400,6 +401,7 @@ async function refresh(){
   if (tab==='port') renderPort();
   if (tab==='snap') renderSnap();
   if (tab==='sum') renderSummary();
+  if (tab==='tax') renderTax();
   await checkAutoSnap();
 }
 function getQ(h){ return h.y ? quotes[h.y] : quotes['GM:'+h.gm]; }
@@ -546,9 +548,9 @@ async function importFile(file, isRestore){
 let tab = 'port';
 function setTab(t){
   tab = t;
-  for (const id of ['snap','sum','port','hold','cash','data']) document.getElementById('tb-'+id).className = (id===t?'on':'');
-  document.getElementById('portbar').style.display = (t==='port'||t==='snap'||t==='sum') ? 'flex' : 'none';
-  ({snap:renderSnap, sum:renderSummary, port:renderPort, hold:renderHold, cash:renderCash, data:renderData})[t]();
+  for (const id of ['snap','sum','tax','port','hold','cash','data']) document.getElementById('tb-'+id).className = (id===t?'on':'');
+  document.getElementById('portbar').style.display = (t==='port'||t==='snap'||t==='sum'||t==='tax') ? 'flex' : 'none';
+  ({snap:renderSnap, sum:renderSummary, tax:renderTax, port:renderPort, hold:renderHold, cash:renderCash, data:renderData})[t]();
 }
 const view = ()=>document.getElementById('view');
 
@@ -767,6 +769,80 @@ function renderSummary(){
   if (sumGroup==='sector'){
     const n = HOLDINGS.filter(h=>!h.sector && h.cls!=='Fund' && h.cls!=='ETF' && !SECTOR_MAP[h.y||'']).length;
     if (n>0) html += '<div class="card"><p class="hint">'+n+' equity holding'+(n===1?'':'s')+' unclassified — tag them via Holdings &rarr; Edit &rarr; Sector.</p></div>';
+  }
+  view().innerHTML = html;
+}
+
+/* ---------------- tax (corporate accounts — estimated capital gains tax on a hypothetical sale) ---------------- */
+/* Estimates only — not tax advice. Rates are 2026 published CRA/EY figures for Ontario-resident CCPCs.
+   Confirm with your accountant before acting on these numbers. */
+const TAX_CORP_ENTITIES = ['SAJE','SCMPC','AGMPC'];
+const TAX_INCLUSION = 0.5;      // capital gains inclusion rate (50%, confirmed unchanged for 2026)
+const TAX_CORP_RATE = 0.5017;   // combined federal+Ontario CCPC tax rate on aggregate investment income (2026)
+const TAX_REFUNDABLE = 0.3067;  // portion of the above added to NERDTOH, refundable at 38.33% of taxable dividends paid
+function computeCorpTax(entityName){
+  const f = fx || STATIC_FX;
+  const rows = HOLDINGS.filter(h=>(h.entity||'').trim().toUpperCase() === entityName.toUpperCase());
+  let acb = 0, fmv = 0;
+  const detail = rows.map(h=>{
+    const c = rowCalc(h);
+    const rate = f[h.ccy]||1;
+    const hACB = h.acb*rate, hFMV = c.mv*rate;
+    acb += hACB; fmv += hFMV;
+    return {name:h.name, sym:h.y||h.gm||'', ccy:h.ccy, acb:hACB, fmv:hFMV, gain:hFMV-hACB};
+  });
+  detail.sort((a,b)=>b.fmv-a.fmv);
+  const netGain = fmv - acb;
+  const taxableGain = netGain * TAX_INCLUSION;
+  const taxOwed = netGain>0 ? taxableGain*TAX_CORP_RATE : 0;
+  const refundable = netGain>0 ? taxableGain*TAX_REFUNDABLE : 0;
+  const netTaxCost = taxOwed - refundable;
+  const netProceeds = fmv - taxOwed;
+  const cda = netGain * (1-TAX_INCLUSION); // non-taxable half added to (or, if a loss, subtracted from) Capital Dividend Account
+  return {entity:entityName, rows:detail, acb, fmv, netGain, taxableGain, taxOwed, refundable, netTaxCost, netProceeds, cda};
+}
+function renderTax(){
+  if (!HOLDINGS.length){ renderFirstRun(); return; }
+  const present = TAX_CORP_ENTITIES.filter(e=>HOLDINGS.some(h=>(h.entity||'').trim().toUpperCase()===e.toUpperCase()));
+  if (!present.length){
+    view().innerHTML = '<div class="card"><h2>Tax — corporate accounts</h2>'+
+      '<p class="hint">No holdings found with owner/entity set to SAJE, SCMPC or AGMPC. Set the "Owner / entity" field on Holdings &rarr; Edit to one of these to include a position here.</p></div>';
+    return;
+  }
+  const results = present.map(computeCorpTax);
+  let html = '<div class="card"><h2>Tax — corporate accounts</h2>'+
+    '<p class="hint">Estimated capital-gains tax owed on a hypothetical full sale today, for corporate accounts only (SAJE, SCMPC, AGMPC). '+
+    'Assumes Ontario-resident CCPC, 2026 combined federal+provincial investment-income rate of '+(TAX_CORP_RATE*100).toFixed(2)+'%, '+
+    (TAX_INCLUSION*100).toFixed(0)+'% capital gains inclusion rate, and '+(TAX_REFUNDABLE*100).toFixed(2)+'% added to the refundable dividend tax on hand (NERDTOH) account. '+
+    'Estimate only — not tax advice; confirm with your accountant.</p></div>';
+
+  html += '<div class="card"><h2>Summary by account</h2><div class="twrap"><table class="fit">'+
+    '<tr><th>Account</th><th>ACB</th><th>FMV</th><th>Net gain</th><th>Taxable gain</th><th>Tax owed</th><th>RDTOH refundable</th><th>Net tax cost</th><th>Net proceeds</th><th>CDA addition</th></tr>';
+  let tACB=0,tFMV=0,tGain=0,tTaxable=0,tTax=0,tRef=0,tNetCost=0,tProc=0,tCDA=0;
+  for (const r of results){
+    tACB+=r.acb; tFMV+=r.fmv; tGain+=r.netGain; tTaxable+=r.taxableGain; tTax+=r.taxOwed; tRef+=r.refundable; tNetCost+=r.netTaxCost; tProc+=r.netProceeds; tCDA+=r.cda;
+    const gcls = r.netGain>=0?'up':'dn', ccls = r.cda>=0?'up':'dn';
+    html += '<tr><td class="nm"><b>'+esc(r.entity)+'</b></td><td>'+money(r.acb)+'</td><td>'+money(r.fmv)+'</td>'+
+      '<td class="'+gcls+'">'+(r.netGain>=0?'+':'')+money(r.netGain)+'</td><td>'+money(r.taxableGain)+'</td>'+
+      '<td>'+money(r.taxOwed)+'</td><td>'+money(r.refundable)+'</td><td>'+money(r.netTaxCost)+'</td>'+
+      '<td><b>'+money(r.netProceeds)+'</b></td><td class="'+ccls+'">'+(r.cda>=0?'+':'')+money(r.cda)+'</td></tr>';
+  }
+  const tgcls = tGain>=0?'up':'dn', tccls = tCDA>=0?'up':'dn';
+  html += '<tr><td class="nm"><b>All corporate accounts</b></td><td><b>'+money(tACB)+'</b></td><td><b>'+money(tFMV)+'</b></td>'+
+    '<td class="'+tgcls+'"><b>'+(tGain>=0?'+':'')+money(tGain)+'</b></td><td><b>'+money(tTaxable)+'</b></td>'+
+    '<td><b>'+money(tTax)+'</b></td><td><b>'+money(tRef)+'</b></td><td><b>'+money(tNetCost)+'</b></td>'+
+    '<td><b>'+money(tProc)+'</b></td><td class="'+tccls+'"><b>'+(tCDA>=0?'+':'')+money(tCDA)+'</b></td></tr>';
+  html += '</table></div><p class="hint">All values in CA$. "Tax owed" is the gross corporate tax payable on sale; "RDTOH refundable" is the portion recoverable later when taxable dividends are paid out; "Net tax cost" is tax owed minus that refund. "CDA addition" is the non-taxable half of the gain (or, if a loss, the reduction), payable to shareholders as a tax-free capital dividend.</p></div>';
+
+  for (const r of results){
+    html += '<div class="card"><h2>'+esc(r.entity)+' &mdash; holdings detail</h2><div class="twrap"><table class="fit">'+
+      '<tr><th>Security</th><th>Ccy</th><th>ACB</th><th>FMV</th><th>Gain</th></tr>';
+    for (const d of r.rows){
+      const cls = d.gain>=0?'up':'dn';
+      html += '<tr><td class="nm">'+esc(d.name)+'<br><span class="sym">'+esc(d.sym)+'</span></td><td>'+esc(d.ccy)+'</td>'+
+        '<td>'+money(d.acb)+'</td><td>'+money(d.fmv)+'</td><td class="'+cls+'">'+(d.gain>=0?'+':'')+money(d.gain)+'</td></tr>';
+    }
+    html += '</table></div></div>';
   }
   view().innerHTML = html;
 }
