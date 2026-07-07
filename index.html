@@ -115,7 +115,7 @@ textarea{font-family:monospace;font-size:12px}
 <div class="foot" id="foot">
 ° = live quote unavailable, showing fallback price.<br>
 Stock/ETF prices from Yahoo Finance (delayed up to 15&nbsp;min). Fund NAVs update once daily after close; some funds scraped from The Globe and Mail. FX from frankfurter.dev (ECB daily).<br>
-Snapshots auto-save when the app is open (or next opened) after 10:00 and after market close (16:15 ET), Mon&ndash;Fri.
+One snapshot auto-saves per weekday, at market close (16:15 ET or later), when the app is backgrounded or closed.
 </div>
 <script>
 'use strict';
@@ -402,7 +402,6 @@ async function refresh(){
   if (tab==='snap') renderSnap();
   if (tab==='sum') renderSummary();
   if (tab==='tax') renderTax();
-  await checkAutoSnap();
 }
 function getQ(h){ return h.y ? quotes[h.y] : quotes['GM:'+h.gm]; }
 function rowCalc(h){
@@ -457,15 +456,14 @@ async function saveSnap(slot, silent){
   return s;
 }
 async function checkAutoSnap(){
+  // One CLOSE snapshot per weekday, taken when the app is backgrounded/closed at or after market close.
   if (!HOLDINGS.length || busy) return;
   const t = torontoNow();
   if (t.dow==='Sat' || t.dow==='Sun') return;
-  let want = null;
-  if (t.hm >= '16:15') want = 'CLOSE';
-  else if (t.hm >= '10:00') want = 'AM';
-  if (!want) return;
+  if (t.hm < '16:15') return;
+  const want = 'CLOSE';
   if (await getSnap(t.date+'|'+want)) return;
-  // need fresh quotes: if never refreshed or older than 10 min, refresh first (refresh re-calls checkAutoSnap)
+  // need fresh quotes: if never refreshed or older than 10 min, refresh first
   if (!lastUpdate || (Date.now()-lastUpdate.getTime()) > 10*60*1000){
     if (!refreshQueued){ refreshQueued = true; await refresh(); refreshQueued = false; }
     if (!lastUpdate) return; // refresh failed entirely
@@ -968,7 +966,7 @@ function syncCard(){
 async function renderData(){
   const snaps = (await allSnaps()).sort((a,b)=>a.id<b.id?1:-1);
   let html = '<div class="card"><h2>Snapshots ('+snaps.length+')</h2>'+
-    '<p class="hint">Auto-saved after 10:00 and after market close (16:15 ET) on weekdays, whenever the app is next open. Prices after close are the official closing prices, so an evening catch-up is exact.</p>'+
+    '<p class="hint">One snapshot auto-saves per weekday, at market close (16:15 ET or later), when the app is backgrounded or the tab/window is closed. Prices after close are the official closing prices, so an evening catch-up is exact.</p>'+
     '<div class="bar" style="margin-top:8px"><button class="sm" onclick="manualSnap()">Save snapshot now</button></div>'+
     '<div class="twrap"><table class="fit"><tr><th>Date</th><th>Slot</th><th>Captured</th><th>Live</th><th>Total CAD</th><th></th></tr>';
   for (const s of snaps.slice(0,30))
@@ -1002,11 +1000,13 @@ if (HOLDINGS.length){
   refresh();
 }
 if (syncOn()) syncPull(true).catch(e=>console.warn('sync pull failed', e));
-setInterval(checkAutoSnap, 60*1000);
 setInterval(()=>{ if (syncOn()) syncPull(true).catch(e=>console.warn('sync pull failed', e)); }, 5*60*1000);
+// One CLOSE snapshot per day, taken when the app is backgrounded or the tab/window is closed (not on refresh, not at 10am).
 document.addEventListener('visibilitychange', ()=>{
-  if (!document.hidden){ checkAutoSnap(); if (syncOn()) syncPull(true).catch(e=>console.warn('sync pull failed', e)); }
+  if (document.hidden){ checkAutoSnap(); }
+  else if (syncOn()) syncPull(true).catch(e=>console.warn('sync pull failed', e));
 });
+window.addEventListener('pagehide', ()=>{ checkAutoSnap(); });
 </script>
 </body>
 </html>
