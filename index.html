@@ -99,6 +99,7 @@ textarea{font-family:monospace;font-size:12px}
   <button id="tb-snap" onclick="setTab('snap')">Snapshot</button>
   <button id="tb-sum" onclick="setTab('sum')">Summary</button>
   <button id="tb-tax" onclick="setTab('tax')">Tax</button>
+  <button id="tb-div" onclick="setTab('div')">Dividends</button>
   <button id="tb-port" class="on" onclick="setTab('port')">Portfolio</button>
   <button id="tb-hold" onclick="setTab('hold')">Holdings</button>
   <button id="tb-cash" onclick="setTab('cash')">Cash</button>
@@ -231,7 +232,7 @@ async function syncPull(apply){
     localStorage.setItem(LS_C, JSON.stringify(CASH));
     localStorage.setItem(LS_UPD, data.updatedAt);
     quotes = {};
-    if (tab==='port') renderPort(); if (tab==='hold') renderHold(); if (tab==='cash') renderCash(); if (tab==='snap') renderSnap(); if (tab==='sum') renderSummary(); if (tab==='tax') renderTax();
+    if (tab==='port') renderPort(); if (tab==='hold') renderHold(); if (tab==='cash') renderCash(); if (tab==='snap') renderSnap(); if (tab==='sum') renderSummary(); if (tab==='tax') renderTax(); if (tab==='div') renderDividends();
   }
   return data;
 }
@@ -402,6 +403,7 @@ async function refresh(){
   if (tab==='snap') renderSnap();
   if (tab==='sum') renderSummary();
   if (tab==='tax') renderTax();
+  if (tab==='div') renderDividends();
 }
 function getQ(h){ return h.y ? quotes[h.y] : quotes['GM:'+h.gm]; }
 function rowCalc(h){
@@ -546,9 +548,9 @@ async function importFile(file, isRestore){
 let tab = 'port';
 function setTab(t){
   tab = t;
-  for (const id of ['snap','sum','tax','port','hold','cash','data']) document.getElementById('tb-'+id).className = (id===t?'on':'');
-  document.getElementById('portbar').style.display = (t==='port'||t==='snap'||t==='sum'||t==='tax') ? 'flex' : 'none';
-  ({snap:renderSnap, sum:renderSummary, tax:renderTax, port:renderPort, hold:renderHold, cash:renderCash, data:renderData})[t]();
+  for (const id of ['snap','sum','tax','div','port','hold','cash','data']) document.getElementById('tb-'+id).className = (id===t?'on':'');
+  document.getElementById('portbar').style.display = (t==='port'||t==='snap'||t==='sum'||t==='tax'||t==='div') ? 'flex' : 'none';
+  ({snap:renderSnap, sum:renderSummary, tax:renderTax, div:renderDividends, port:renderPort, hold:renderHold, cash:renderCash, data:renderData})[t]();
 }
 const view = ()=>document.getElementById('view');
 
@@ -845,6 +847,187 @@ function renderTax(){
   view().innerHTML = html;
 }
 
+/* ---------------- dividends (calendar, absolute + after-tax for corp accounts, preferred-share income) ---------------- */
+/* Estimates only — not tax advice. Canadian eligible/non-eligible dividends: Part IV tax (38.33%), fully refundable via RDTOH
+   when the corp itself pays a dividend — shown as immediate cash impact, net long-run cost ~0.
+   Foreign dividends: taxed as aggregate investment income at the same combined rate used on the Tax tab, with foreign
+   withholding tax (default 15% treaty rate) assumed fully creditable against that Canadian tax. ROC is untaxed (reduces ACB,
+   not tracked here). Confirm all of this with your accountant before acting. */
+const DIV_CACHE_KEY = 'pt_div_cache';
+let DIVCACHE = {};
+try{ DIVCACHE = JSON.parse(localStorage.getItem(DIV_CACHE_KEY)) || {}; }catch(e){}
+function saveDivCache(){ try{ localStorage.setItem(DIV_CACHE_KEY, JSON.stringify(DIVCACHE)); }catch(e){} }
+const DIV_FREQ_DAYS = {Monthly:30, Quarterly:91, 'Semi-Annual':182, Annual:365};
+function divEventsParse(t){
+  const i = t.search(/\{"chart"/); if (i<0) return null;
+  try{
+    const res = JSON.parse(t.slice(i)).chart.result[0];
+    const divs = res.events && res.events.dividends;
+    if (!divs) return [];
+    return Object.values(divs).map(d=>({date:new Date(d.date*1000).toISOString().slice(0,10), amount:d.amount})).sort((a,b)=>a.date<b.date?-1:1);
+  }catch(e){ return null; }
+}
+function deriveDivStats(events){
+  if (!events || events.length<1) return null;
+  const last = events[events.length-1];
+  let freq = 'Irregular', intervalDays = null;
+  if (events.length>=2){
+    const diffs = [];
+    for (let k=1;k<events.length;k++) diffs.push((new Date(events[k].date)-new Date(events[k-1].date))/86400000);
+    diffs.sort((a,b)=>a-b);
+    const median = diffs[Math.floor(diffs.length/2)];
+    let best='Irregular', bestDiff=Infinity;
+    for (const [f,d] of Object.entries(DIV_FREQ_DAYS)){
+      const diff = Math.abs(median-d);
+      if (diff<bestDiff){ bestDiff=diff; best=f; }
+    }
+    if (bestDiff < 20) { freq = best; intervalDays = DIV_FREQ_DAYS[best]; }
+  }
+  const paymentsPerYear = intervalDays ? Math.round(365/intervalDays) : 1;
+  const annualRate = freq==='Irregular' ? events.filter(e=>new Date(e.date) > new Date(Date.now()-365*86400000)).reduce((a,e)=>a+e.amount,0) || last.amount
+                                         : last.amount*paymentsPerYear;
+  let nextDate = new Date(last.date);
+  if (intervalDays){ while (nextDate <= new Date()) nextDate = new Date(nextDate.getTime()+intervalDays*86400000); }
+  return {lastAmount:last.amount, freq, annualRate, nextDate: intervalDays ? nextDate.toISOString().slice(0,10) : null, fetchedAt: Date.now()};
+}
+async function refreshDivData(){
+  const targets = [...new Set(HOLDINGS.filter(h=>h.y && !(h.divRate>0)).map(h=>h.y))];
+  if (!targets.length){ document.getElementById('status').textContent = 'No symbols need auto-fetch (all set manually, or none have a Yahoo symbol).'; return; }
+  const st = document.getElementById('status');
+  let done = 0;
+  for (const sym of targets){
+    const cached = DIVCACHE[sym];
+    if (cached && (Date.now()-cached.fetchedAt) < 20*24*60*60*1000){ done++; continue; }
+    st.textContent = 'Fetching dividend history '+(done+1)+'/'+targets.length+': '+sym+'…';
+    const events = await fetchVia('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(sym)+'?range=2y&interval=1mo&events=div', divEventsParse);
+    const stats = deriveDivStats(events);
+    DIVCACHE[sym] = stats || {freq:'None', annualRate:0, fetchedAt:Date.now()};
+    done++;
+    await sleep(120);
+  }
+  saveDivCache();
+  st.textContent = 'Dividend history updated for '+targets.length+' symbol'+(targets.length===1?'':'s')+'.';
+  if (tab==='div') renderDividends();
+}
+function computeDivForHolding(h){
+  if (h.divRate>0){
+    const freq = h.divFreq || 'Quarterly';
+    return {rate:h.divRate, freq, nextDate:h.divNext||null, source:'manual'};
+  }
+  const c = h.y && DIVCACHE[h.y];
+  if (c && c.annualRate>0) return {rate:c.annualRate, freq:c.freq, nextDate:c.nextDate, source:'auto'};
+  return {rate:0, freq:'None', nextDate:null, source:'none'};
+}
+function divTaxCalc(grossCAD, divType, whtPct){
+  if (divType==='CDN-Eligible' || divType==='CDN-NonEligible'){
+    const taxOwed = grossCAD*0.3833;
+    return {taxOwed, refundable:taxOwed, netTaxCost:0, afterTax:grossCAD-taxOwed, whtAmt:0, note:'Part IV tax (fully refundable via RDTOH)'};
+  }
+  if (divType==='Foreign'){
+    const wht = (whtPct==null||whtPct==='') ? 15 : whtPct;
+    const whtAmt = grossCAD*(wht/100);
+    const taxOwed = grossCAD*TAX_CORP_RATE;
+    const refundable = grossCAD*TAX_REFUNDABLE;
+    return {taxOwed, refundable, netTaxCost:taxOwed-refundable, afterTax:grossCAD-taxOwed, whtAmt, note:'AII rate; '+wht+'% foreign WHT assumed creditable'};
+  }
+  if (divType==='ROC'){
+    return {taxOwed:0, refundable:0, netTaxCost:0, afterTax:grossCAD, whtAmt:0, note:'Return of capital — untaxed, reduces ACB (not auto-adjusted here)'};
+  }
+  return {taxOwed:null, refundable:null, netTaxCost:null, afterTax:null, whtAmt:0, note:'Unclassified — set Dividend type on Holdings → Edit'};
+}
+function renderDividends(){
+  if (!HOLDINGS.length){ renderFirstRun(); return; }
+  const f = fx || STATIC_FX;
+  const paying = HOLDINGS.map(h=>({h, d:computeDivForHolding(h)})).filter(x=>x.d.rate>0);
+  const isCorp = h => TAX_CORP_ENTITIES.some(e=>(h.entity||'').trim().toUpperCase()===e.toUpperCase());
+
+  let html = '<div class="card"><h2>Dividends &amp; distributions</h2>'+
+    '<p class="hint">Absolute (gross) income for all holdings; estimated after-tax income for corporate accounts (SAJE, SCMPC, AGMPC) only. '+
+    'Rates/dates are either manually entered (Holdings &rarr; Edit) or auto-derived from trailing Yahoo dividend history when available — projected forward, not guaranteed. Estimate only, not tax advice.</p>'+
+    '<div class="bar"><button class="sm" onclick="refreshDivData()">Fetch / update dividend history</button></div></div>';
+
+  if (!paying.length){
+    html += '<div class="card"><p class="hint">No dividend data yet. Tap "Fetch / update dividend history" to pull trailing history for holdings with a Yahoo symbol, or set a Distribution rate manually on Holdings &rarr; Edit (recommended for preferred shares, which are rarely covered by free data feeds).</p></div>';
+    view().innerHTML = html;
+    return;
+  }
+
+  // annual income summary by account
+  const byAccount = new Map();
+  for (const {h,d} of paying){
+    const k = acctKey(h);
+    const annualGrossCAD = h.qty*d.rate*(f[h.ccy]||1);
+    const corp = isCorp(h);
+    const tx = corp ? divTaxCalc(annualGrossCAD, h.divType, h.divWHT) : null;
+    if (!byAccount.has(k)) byAccount.set(k, {gross:0, afterTax:0, corp, hasUnclassified:false});
+    const a = byAccount.get(k);
+    a.gross += annualGrossCAD;
+    if (corp){ a.afterTax += (tx.afterTax==null ? annualGrossCAD : tx.afterTax); if (tx.afterTax==null) a.hasUnclassified=true; }
+  }
+  html += '<div class="card"><h2>Annual income by account (run-rate)</h2><div class="twrap"><table class="fit">'+
+    '<tr><th>Account</th><th>Gross / yr</th><th>After-tax / yr</th></tr>';
+  let sumGross=0, sumAfter=0;
+  for (const [k,a] of byAccount){
+    sumGross += a.gross; sumAfter += a.corp ? a.afterTax : a.gross;
+    html += '<tr><td class="nm">'+esc(k)+'</td><td>'+money(a.gross)+'</td><td>'+(a.corp ? money(a.afterTax)+(a.hasUnclassified?' *':'') : '<span class="hint">— (personal)</span>')+'</td></tr>';
+  }
+  html += '<tr><td class="nm"><b>Total</b></td><td><b>'+money(sumGross)+'</b></td><td><b>'+money(sumAfter)+'</b></td></tr>';
+  html += '</table></div><p class="hint">* includes holdings with no Dividend type set — shown at gross, not tax-adjusted. After-tax only computed for corporate accounts.</p></div>';
+
+  // preferred share subtotal
+  const prefs = paying.filter(x=>x.h.cls==='Preferred');
+  if (prefs.length){
+    let pGross=0, pAfter=0;
+    for (const {h,d} of prefs){
+      const annualGrossCAD = h.qty*d.rate*(f[h.ccy]||1);
+      pGross += annualGrossCAD;
+      pAfter += isCorp(h) ? (divTaxCalc(annualGrossCAD, h.divType, h.divWHT).afterTax ?? annualGrossCAD) : annualGrossCAD;
+    }
+    html += '<div class="card"><h2>Preferred share income</h2><p class="hint">'+prefs.length+' preferred holding'+(prefs.length===1?'':'s')+'.</p>'+
+      '<div class="twrap"><table class="fit"><tr><th>Security</th><th>Account</th><th>Rate/yr</th><th>Gross/yr</th></tr>'+
+      prefs.map(({h,d})=>{
+        const annualGrossCAD = h.qty*d.rate*(f[h.ccy]||1);
+        return '<tr><td class="nm">'+esc(h.name)+'<br><span class="sym">'+esc(h.y||h.gm||'')+'</span></td><td>'+esc(acctKey(h))+'</td>'+
+          '<td>'+esc(h.ccy)+' '+money(d.rate)+'</td><td>'+money(annualGrossCAD)+'</td></tr>';
+      }).join('')+
+      '</table></div><p class="hint">Gross '+money(pGross)+' / yr · After-tax (corp accounts only) '+money(pAfter)+' / yr</p></div>';
+  }
+
+  // upcoming payments (next 12 months)
+  const upcoming = [];
+  const horizon = new Date(Date.now()+365*86400000);
+  for (const {h,d} of paying){
+    if (!d.nextDate || d.freq==='Irregular' || d.freq==='None') continue;
+    const stepDays = DIV_FREQ_DAYS[d.freq] || 91;
+    let dt = new Date(d.nextDate);
+    let guard = 0;
+    while (dt <= horizon && guard<40){
+      const perPayNative = d.rate/((365/stepDays)||1);
+      const grossCAD = h.qty*perPayNative*(f[h.ccy]||1);
+      const corp = isCorp(h);
+      const tx = corp ? divTaxCalc(grossCAD, h.divType, h.divWHT) : null;
+      upcoming.push({date:dt.toISOString().slice(0,10), name:h.name, sym:h.y||h.gm||'', acct:acctKey(h), pref:h.cls==='Preferred', grossCAD, corp, afterTaxCAD: tx ? tx.afterTax : null});
+      dt = new Date(dt.getTime()+stepDays*86400000);
+      guard++;
+    }
+  }
+  upcoming.sort((a,b)=>a.date<b.date?-1:1);
+  html += '<div class="card"><h2>Upcoming payments (next 12 months)</h2>';
+  if (!upcoming.length){
+    html += '<p class="hint">No projectable payment dates yet — set a Next pay date on Holdings &rarr; Edit, or fetch dividend history above.</p>';
+  } else {
+    html += '<div class="twrap"><table class="fit"><tr><th>Date</th><th>Security</th><th>Account</th><th>Gross</th><th>After-tax</th></tr>'+
+      upcoming.slice(0,60).map(u=>
+        '<tr><td class="nm">'+u.date+'</td><td class="nm">'+esc(u.name)+(u.pref?' <span class="pill" style="padding:1px 6px">PREF</span>':'')+'<br><span class="sym">'+esc(u.sym)+'</span></td>'+
+        '<td class="nm">'+esc(u.acct)+'</td><td>'+money(u.grossCAD)+'</td>'+
+        '<td>'+(u.corp ? (u.afterTaxCAD==null?'<span class="hint">unclassified</span>':money(u.afterTaxCAD)) : '<span class="hint">—</span>')+'</td></tr>'
+      ).join('')+'</table></div>'+
+      (upcoming.length>60?'<p class="hint">Showing first 60 of '+upcoming.length+' projected payments.</p>':'');
+  }
+  html += '</div>';
+  view().innerHTML = html;
+}
+
 function dlist(id, vals){
   return '<datalist id="'+id+'">'+[...new Set(vals.filter(Boolean))].map(v=>'<option value="'+esc(v)+'">').join('')+'</datalist>';
 }
@@ -871,15 +1054,18 @@ function delHold(i){
   if (!confirm('Delete "'+HOLDINGS[i].name+'"?')) return;
   HOLDINGS.splice(i,1); saveH(); renderHold();
 }
+const DIV_FREQ_LIST = ['','Monthly','Quarterly','Semi-Annual','Annual','Irregular'];
+const DIV_TYPE_LIST = ['','CDN-Eligible','CDN-NonEligible','Foreign','ROC'];
 function editHold(i){
-  const h = i>=0 ? HOLDINGS[i] : {entity:'',broker:'',account:'',atype:'Non-Reg',cls:'Equity',name:'',ccy:'CAD',qty:0,acb:0,y:'',gm:'',exch:'',qccy:'',scale:1,fp:0,sector:''};
+  const h = i>=0 ? HOLDINGS[i] : {entity:'',broker:'',account:'',atype:'Non-Reg',cls:'Equity',name:'',ccy:'CAD',qty:0,acb:0,y:'',gm:'',exch:'',qccy:'',scale:1,fp:0,sector:'',divRate:0,divFreq:'',divNext:'',divType:'',divWHT:''};
   const F = (label,id,val,attrs,cls)=>'<div class="'+(cls||'')+'"><label>'+label+'</label><input id="f_'+id+'" value="'+esc(val)+'" '+(attrs||'')+'></div>';
+  const Sel = (label,id,val,opts,cls)=>'<div class="'+(cls||'')+'"><label>'+label+'</label><select id="f_'+id+'">'+opts.map(o=>'<option'+(val===o?' selected':'')+'>'+(o||'(none)')+'</option>').join('')+'</select></div>';
   document.getElementById('modal').innerHTML =
     '<div class="overlay"><div class="card"><h2>'+(i>=0?'Edit':'Add')+' holding</h2><div class="frm">'+
     F('Owner / entity','entity',h.entity,'list="dl_e"')+F('Broker','broker',h.broker,'list="dl_b"')+
     F('Account #','account',h.account,'list="dl_a"')+F('Account type','atype',h.atype,'list="dl_t"')+
     F('Security name','name',h.name,'','w2')+
-    '<div><label>Class</label><select id="f_cls">'+['Equity','ETF','Fund'].map(c=>'<option'+(h.cls===c?' selected':'')+'>'+c+'</option>').join('')+'</select></div>'+
+    '<div><label>Class</label><select id="f_cls">'+['Equity','Preferred','ETF','Fund'].map(c=>'<option'+(h.cls===c?' selected':'')+'>'+c+'</option>').join('')+'</select></div>'+
     F('Sector (optional)','sector',h.sector||'','list="dl_sec"')+
     F('Holding currency','ccy',h.ccy,'list="dl_c"')+
     F('Shares / units','qty',h.qty,'type="number" step="any"')+F('Book cost (total)','acb',h.acb,'type="number" step="any"')+
@@ -887,6 +1073,11 @@ function editHold(i){
     F('G&M fund code (if no Yahoo symbol)','gm',h.gm||'')+F('Exchange','exch',h.exch||'')+
     F('Quote currency (blank = same)','qccy',h.qccy||'')+F('Price scale (PSH.L = 0.01)','scale',h.scale==null?1:h.scale,'type="number" step="any"')+
     F('Fallback price (used if quote fails)','fp',h.fp||0,'type="number" step="any"','w2')+
+    F('Distribution rate ($/share/year, optional)','divRate',h.divRate||0,'type="number" step="any"')+
+    Sel('Distribution frequency','divFreq',h.divFreq||'',DIV_FREQ_LIST)+
+    F('Next pay date (optional, YYYY-MM-DD)','divNext',h.divNext||'','type="date"')+
+    Sel('Dividend type (for tax est.)','divType',h.divType||'',DIV_TYPE_LIST)+
+    F('Foreign withholding % (Foreign only, blank=15%)','divWHT',h.divWHT==null?'':h.divWHT,'type="number" step="any"','w2')+
     '</div><div class="rowbtns" style="margin-top:12px"><button class="ghost" onclick="closeModal()">Cancel</button><button onclick="saveHold('+i+')">Save</button></div>'+
     dlist('dl_e',HOLDINGS.map(x=>x.entity))+dlist('dl_b',HOLDINGS.map(x=>x.broker))+
     dlist('dl_a',HOLDINGS.map(x=>x.account))+dlist('dl_t',HOLDINGS.map(x=>x.atype).concat(['Non-Reg','TFSA','RRSP','RESP']))+
@@ -897,6 +1088,7 @@ function closeModal(){ document.getElementById('modal').innerHTML=''; }
 function saveHold(i){
   const g = id=>document.getElementById('f_'+id).value.trim();
   const n = id=>parseFloat(document.getElementById('f_'+id).value)||0;
+  const sel = id=>document.getElementById('f_'+id).value;
   const h = {entity:g('entity'),broker:g('broker'),account:g('account'),atype:g('atype'),
     cls:document.getElementById('f_cls').value,name:g('name'),ccy:g('ccy')||'CAD',
     qty:n('qty'),acb:n('acb'),exch:g('exch'),scale:n('scale')||1,fp:n('fp')};
@@ -904,6 +1096,11 @@ function saveHold(i){
   if (g('gm')) h.gm = g('gm');
   if (g('sector')) h.sector = g('sector');
   h.qccy = g('qccy') || h.ccy;
+  if (n('divRate')) h.divRate = n('divRate');
+  if (sel('divFreq')) h.divFreq = sel('divFreq')==='(none)'?'':sel('divFreq');
+  if (g('divNext')) h.divNext = g('divNext');
+  if (sel('divType') && sel('divType')!=='(none)') h.divType = sel('divType');
+  if (g('divWHT')) h.divWHT = n('divWHT');
   if (!h.name){ alert('Name is required.'); return; }
   if (!h.y && !h.gm && !h.fp){ alert('Give a Yahoo symbol, a G&M fund code, or a fallback price.'); return; }
   if (i>=0) HOLDINGS[i] = h; else HOLDINGS.push(h);
