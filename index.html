@@ -61,12 +61,26 @@ textarea{font-family:monospace;font-size:12px}
 .rowbtns{display:flex;gap:6px;justify-content:flex-end}
 .hint{font-size:11px;color:var(--dim);margin-top:6px;line-height:1.5}
 .cashamt{width:110px;text-align:right}
+.netchg{font-size:26px;font-weight:800}
+.netchg .pct{font-size:14px;font-weight:600;margin-left:8px}
+.moverlist{margin-top:2px}
+.moverrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bord)}
+.moverrow:last-child{border-bottom:0}
+.moverrow .nm2{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.moverrow .nm2 .sym{color:var(--dim);font-size:11px;display:block}
+.moverrow .amt{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.moverrow .amt .pct{display:block;font-size:11px}
+.barchart{display:flex;align-items:flex-end;gap:4px;height:90px;margin-top:10px}
+.barchart .bwrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+.barchart .bar{width:100%;background:var(--acc);border-radius:3px 3px 0 0;min-height:2px}
+.barchart .blabel{font-size:9px;color:var(--dim);margin-top:4px;white-space:nowrap}
 </style>
 </head>
 <body>
 <h1>Portfolio Tracker</h1>
 <p class="sub" id="subline">Live-priced holdings &middot; data stored on this device only</p>
 <div class="tabs">
+  <button id="tb-snap" onclick="setTab('snap')">Snapshot</button>
   <button id="tb-port" class="on" onclick="setTab('port')">Portfolio</button>
   <button id="tb-hold" onclick="setTab('hold')">Holdings</button>
   <button id="tb-cash" onclick="setTab('cash')">Cash</button>
@@ -199,7 +213,7 @@ async function syncPull(apply){
     localStorage.setItem(LS_C, JSON.stringify(CASH));
     localStorage.setItem(LS_UPD, data.updatedAt);
     quotes = {};
-    if (tab==='port') renderPort(); if (tab==='hold') renderHold(); if (tab==='cash') renderCash();
+    if (tab==='port') renderPort(); if (tab==='hold') renderHold(); if (tab==='cash') renderCash(); if (tab==='snap') renderSnap();
   }
   return data;
 }
@@ -367,6 +381,7 @@ async function refresh(){
   st.textContent = 'Updated '+lastUpdate.toLocaleString('en-CA')+(usedProxy!=='—'?' · via '+usedProxy:'')+
     (live<HOLDINGS.length?' · '+(HOLDINGS.length-live)+' rows on fallback prices (°)':'');
   if (tab==='port') renderPort();
+  if (tab==='snap') renderSnap();
   await checkAutoSnap();
 }
 function getQ(h){ return h.y ? quotes[h.y] : quotes['GM:'+h.gm]; }
@@ -471,11 +486,11 @@ async function exportTotalsCSV(){
   for (const s of snaps){
     const by = new Map();
     for (const r of s.rows){
-      const k = r.slice(0,4).join('\u001f');
+      const k = r.slice(0,4).join('');
       by.set(k, (by.get(k)||0) + (r[11]||0));
     }
     for (const [k,v] of by){
-      const [e,b,a,at] = k.split('\u001f');
+      const [e,b,a,at] = k.split('');
       lines.push([s.date,s.slot,s.capturedAt,e,b,a,at,v,s.grandCAD,s.fx.USD].map(csvCell).join(','));
     }
   }
@@ -513,9 +528,9 @@ async function importFile(file, isRestore){
 let tab = 'port';
 function setTab(t){
   tab = t;
-  for (const id of ['port','hold','cash','data']) document.getElementById('tb-'+id).className = (id===t?'on':'');
-  document.getElementById('portbar').style.display = (t==='port') ? 'flex' : 'none';
-  ({port:renderPort, hold:renderHold, cash:renderCash, data:renderData})[t]();
+  for (const id of ['snap','port','hold','cash','data']) document.getElementById('tb-'+id).className = (id===t?'on':'');
+  document.getElementById('portbar').style.display = (t==='port'||t==='snap') ? 'flex' : 'none';
+  ({snap:renderSnap, port:renderPort, hold:renderHold, cash:renderCash, data:renderData})[t]();
 }
 const view = ()=>document.getElementById('view');
 
@@ -571,6 +586,64 @@ function renderFirstRun(){
     '<div style="margin-top:10px"><input type="file" accept=".json,application/json" onchange="importFile(this.files[0], true)"></div>'+
     '<p class="hint">You can also start empty and add holdings by hand on the Holdings tab.</p></div>';
   document.getElementById('status').textContent = 'No holdings loaded yet.';
+}
+
+function moverRow(m, cls){
+  return '<div class="moverrow"><div class="nm2">'+esc(m.name)+'<span class="sym">'+esc(m.sym)+'</span></div>'+
+    '<div class="amt '+cls+'">'+(m.chg>=0?'+':'')+'CA$ '+money(m.chg)+'<span class="pct">'+(m.chg>=0?'+':'')+m.pct.toFixed(2)+'%</span></div></div>';
+}
+async function renderSnap(){
+  if (!HOLDINGS.length){ renderFirstRun(); return; }
+  const f = fx || STATIC_FX;
+  let totalChg = 0, prevGrand = 0, haveAnyLive = false;
+  const movers = [];
+  for (const h of HOLDINGS){
+    const q = getQ(h), c = rowCalc(h);
+    const mvCAD = c.mv*(f[h.ccy]||1);
+    if (q && q.prev){
+      haveAnyLive = true;
+      const cross = (f[h.qccy]||1)/(f[h.ccy]||1);
+      const prevPriceNat = q.prev * h.scale * cross;
+      const curPriceNat = q.p * h.scale * cross;
+      const dChgCAD = h.qty*(curPriceNat-prevPriceNat)*(f[h.ccy]||1);
+      totalChg += dChgCAD;
+      prevGrand += h.qty*prevPriceNat*(f[h.ccy]||1);
+      if (dChgCAD !== 0) movers.push({name:h.name, sym:h.y||h.gm||'', chg:dChgCAD, pct: prevPriceNat>0 ? (curPriceNat-prevPriceNat)/prevPriceNat*100 : 0});
+    } else {
+      prevGrand += mvCAD;
+    }
+  }
+  for (const c of CASH) prevGrand += c.amount*(f[c.ccy]||1);
+  const totalPct = prevGrand>0 ? totalChg/prevGrand*100 : 0;
+  const chgCls = totalChg>=0 ? 'up' : 'dn';
+  const ups   = [...movers].sort((a,b)=>b.chg-a.chg).filter(m=>m.chg>0).slice(0,5);
+  const downs = [...movers].sort((a,b)=>a.chg-b.chg).filter(m=>m.chg<0).slice(0,5);
+
+  const snaps = (await allSnaps()).filter(s=>s.slot==='CLOSE').sort((a,b)=>a.date<b.date?-1:(a.date>b.date?1:0)).slice(-10);
+  let barsHtml;
+  if (snaps.length){
+    const vals = snaps.map(s=>s.grandCAD);
+    const min = Math.min(...vals), max = Math.max(...vals), range = (max-min)||1;
+    barsHtml = '<div class="barchart">'+snaps.map(s=>{
+      const pct = snaps.length>1 ? ((s.grandCAD-min)/range*80+15) : 50;
+      return '<div class="bwrap"><div class="bar" style="height:'+pct.toFixed(1)+'%" title="'+s.date+': CA$ '+money(s.grandCAD)+'"></div>'+
+        '<div class="blabel">'+esc(s.date.slice(5))+'</div></div>';
+    }).join('')+'</div>';
+  } else {
+    barsHtml = '<p class="hint">No CLOSE snapshots yet — check back after the app captures a market close.</p>';
+  }
+
+  let html = '<div class="card"><h2>Change since last close</h2>'+
+    '<div class="netchg '+chgCls+'">'+(totalChg>=0?'+':'')+'CA$ '+money(totalChg)+'<span class="pct">'+(totalChg>=0?'+':'')+totalPct.toFixed(2)+'%</span></div>'+
+    '<p class="hint">'+(haveAnyLive?'Live holdings vs. their previous close.':'No live quotes yet — tap Refresh above.')+'</p></div>';
+  html += '<div class="card"><h2>Top movers</h2><div class="frm">'+
+    '<div><div class="hint" style="margin-bottom:4px">Up</div><div class="moverlist">'+
+    (ups.length ? ups.map(m=>moverRow(m,'up')).join('') : '<p class="hint">No gainers</p>')+'</div></div>'+
+    '<div><div class="hint" style="margin-bottom:4px">Down</div><div class="moverlist">'+
+    (downs.length ? downs.map(m=>moverRow(m,'dn')).join('') : '<p class="hint">No decliners</p>')+'</div></div>'+
+    '</div></div>';
+  html += '<div class="card"><h2>Value at close &mdash; last '+snaps.length+' trading day'+(snaps.length===1?'':'s')+'</h2>'+barsHtml+'</div>';
+  view().innerHTML = html;
 }
 
 function dlist(id, vals){
