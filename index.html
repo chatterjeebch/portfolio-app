@@ -64,12 +64,16 @@ textarea{font-family:monospace;font-size:12px}
 .netchg{font-size:26px;font-weight:800}
 .netchg .pct{font-size:14px;font-weight:600;margin-left:8px}
 .moverlist{margin-top:2px}
-.moverrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bord)}
-.moverrow:last-child{border-bottom:0}
-.moverrow .nm2{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.moverrow .nm2 .sym{color:var(--dim);font-size:11px;display:block}
-.moverrow .amt{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.moverrow .amt .pct{display:block;font-size:11px}
+.moverrow2{padding:7px 0;border-bottom:1px solid var(--bord)}
+.moverrow2:last-child{border-bottom:0}
+.mv-line1{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.mv-line2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:1px}
+.mv-name{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.mv-name .sym{color:var(--dim);font-size:11px;margin-left:6px}
+.mv-price{font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mv-chg{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mv-sub{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.3px;margin:10px 0 2px}
+.mv-sub:first-child{margin-top:0}
 .barchart{display:flex;align-items:flex-end;gap:4px;height:90px;margin-top:10px}
 .barchart .bwrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
 .barchart .bar{width:100%;background:var(--acc);border-radius:3px 3px 0 0;min-height:2px}
@@ -603,8 +607,11 @@ function renderFirstRun(){
 }
 
 function moverRow(m, cls){
-  return '<div class="moverrow"><div class="nm2">'+esc(m.name)+'<span class="sym">'+esc(m.sym)+'</span></div>'+
-    '<div class="amt '+cls+'">'+(m.chg>=0?'+':'')+'CA$ '+money(m.chg)+'<span class="pct">'+(m.chg>=0?'+':'')+m.pct.toFixed(2)+'%</span></div></div>';
+  return '<div class="moverrow2">'+
+    '<div class="mv-line1"><span class="mv-name">'+esc(m.name)+'<span class="sym">'+esc(m.sym)+'</span></span>'+
+    '<span class="mv-price">'+esc(m.ccy)+' '+money(m.price)+'</span></div>'+
+    '<div class="mv-line2"><span></span><span class="mv-chg '+cls+'">'+(m.chg>=0?'+':'')+'CA$ '+money(m.chg)+' &nbsp;('+(m.chg>=0?'+':'')+m.pct.toFixed(2)+'%)</span></div>'+
+    '</div>';
 }
 async function renderSnap(){
   if (!HOLDINGS.length){ renderFirstRun(); return; }
@@ -622,7 +629,7 @@ async function renderSnap(){
       const dChgCAD = h.qty*(curPriceNat-prevPriceNat)*(f[h.ccy]||1);
       totalChg += dChgCAD;
       prevGrand += h.qty*prevPriceNat*(f[h.ccy]||1);
-      if (dChgCAD !== 0) movers.push({name:h.name, sym:h.y||h.gm||'', chg:dChgCAD, pct: prevPriceNat>0 ? (curPriceNat-prevPriceNat)/prevPriceNat*100 : 0});
+      if (dChgCAD !== 0) movers.push({name:h.name, sym:h.y||h.gm||'', ccy:h.ccy, price:curPriceNat, chg:dChgCAD, pct: prevPriceNat>0 ? (curPriceNat-prevPriceNat)/prevPriceNat*100 : 0});
     } else {
       prevGrand += mvCAD;
     }
@@ -630,8 +637,10 @@ async function renderSnap(){
   for (const c of CASH) prevGrand += c.amount*(f[c.ccy]||1);
   const totalPct = prevGrand>0 ? totalChg/prevGrand*100 : 0;
   const chgCls = totalChg>=0 ? 'up' : 'dn';
-  const ups   = [...movers].sort((a,b)=>b.chg-a.chg).filter(m=>m.chg>0).slice(0,5);
-  const downs = [...movers].sort((a,b)=>a.chg-b.chg).filter(m=>m.chg<0).slice(0,5);
+  const upsAmt   = [...movers].sort((a,b)=>b.chg-a.chg).filter(m=>m.chg>0).slice(0,5);
+  const downsAmt = [...movers].sort((a,b)=>a.chg-b.chg).filter(m=>m.chg<0).slice(0,5);
+  const upsPct   = [...movers].sort((a,b)=>b.pct-a.pct).filter(m=>m.pct>0).slice(0,5);
+  const downsPct = [...movers].sort((a,b)=>a.pct-b.pct).filter(m=>m.pct<0).slice(0,5);
 
   const snaps = (await allSnaps()).filter(s=>s.slot==='CLOSE').sort((a,b)=>a.date<b.date?-1:(a.date>b.date?1:0)).slice(-10);
   let barsHtml;
@@ -650,11 +659,17 @@ async function renderSnap(){
   let html = '<div class="card"><h2>Change since last close</h2>'+
     '<div class="netchg '+chgCls+'">'+(totalChg>=0?'+':'')+'CA$ '+money(totalChg)+'<span class="pct">'+(totalChg>=0?'+':'')+totalPct.toFixed(2)+'%</span></div>'+
     '<p class="hint">'+(haveAnyLive?'Live holdings vs. their previous close.':'No live quotes yet — tap Refresh above.')+'</p></div>';
-  html += '<div class="card"><h2>Top movers</h2><div class="frm">'+
-    '<div><div class="hint" style="margin-bottom:4px">Up</div><div class="moverlist">'+
-    (ups.length ? ups.map(m=>moverRow(m,'up')).join('') : '<p class="hint">No gainers</p>')+'</div></div>'+
-    '<div><div class="hint" style="margin-bottom:4px">Down</div><div class="moverlist">'+
-    (downs.length ? downs.map(m=>moverRow(m,'dn')).join('') : '<p class="hint">No decliners</p>')+'</div></div>'+
+  html += '<div class="card"><h2>Top movers &mdash; by dollar amount</h2><div class="moverlist">'+
+    '<div class="mv-sub">Gainers</div>'+
+    (upsAmt.length ? upsAmt.map(m=>moverRow(m,'up')).join('') : '<p class="hint">No gainers</p>')+
+    '<div class="mv-sub">Decliners</div>'+
+    (downsAmt.length ? downsAmt.map(m=>moverRow(m,'dn')).join('') : '<p class="hint">No decliners</p>')+
+    '</div></div>';
+  html += '<div class="card"><h2>Top movers &mdash; by percent change</h2><div class="moverlist">'+
+    '<div class="mv-sub">Gainers</div>'+
+    (upsPct.length ? upsPct.map(m=>moverRow(m,'up')).join('') : '<p class="hint">No gainers</p>')+
+    '<div class="mv-sub">Decliners</div>'+
+    (downsPct.length ? downsPct.map(m=>moverRow(m,'dn')).join('') : '<p class="hint">No decliners</p>')+
     '</div></div>';
   html += '<div class="card"><h2>Value at close &mdash; last '+snaps.length+' trading day'+(snaps.length===1?'':'s')+'</h2>'+barsHtml+'</div>';
   view().innerHTML = html;
