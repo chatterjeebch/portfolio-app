@@ -90,6 +90,18 @@ textarea{font-family:monospace;font-size:12px}
 .legend2 .swatch{width:10px;height:10px;border-radius:3px;flex-shrink:0}
 .legend2 .llabel{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .legend2 .lval{font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.holdlist{padding:0 12px}
+.holdrow{padding:8px 0;border-bottom:1px solid var(--bord)}
+.holdrow:last-child{border-bottom:0}
+.holdrow.stale{opacity:.6}
+.holdrow.stale .hd-name::after{content:" °";color:#e8b93c}
+.hd-line1{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.hd-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.hd-name .sym{color:var(--dim);font-weight:400;font-size:11px;margin-left:6px}
+.hd-value{font-size:14px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.hd-line2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:2px;font-size:12px}
+.hd-line3{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:2px;font-size:12px}
+.hd-dim{color:var(--dim)}
 </style>
 </head>
 <body>
@@ -578,18 +590,21 @@ function renderPort(){
     grandCAD += acctCAD;
     natTotals.push({k, byCcy, acctCAD});
     html += '<div class="acct"><div class="ahdr"><b>'+esc(k)+'</b><span class="cad">CA$ '+money(acctCAD)+'</span><span class="nat">'+
-      Object.entries(byCcy).map(([c,v])=>c+' '+money(v)).join(' + ')+'</span></div><div class="twrap"><table><tr><th>Security</th><th>Ccy</th><th>Shares</th><th>Book</th><th>Price</th><th>Value</th><th>Gain</th><th>Gain %</th></tr>';
+      Object.entries(byCcy).map(([c,v])=>c+' '+money(v)).join(' + ')+'</span></div><div class="holdlist">';
     for (const {h,c} of calcs){
       const cls = c.gain>=0?'up':'dn';
-      const dayHtml = c.day==null?'':'<span class="day '+(c.day>=0?'up':'dn')+'">'+(c.day>=0?'+':'')+c.day.toFixed(2)+'%</span>';
-      html += '<tr'+(c.live?'':' class="stale"')+'><td class="nm">'+esc(h.name)+'<br><span class="sym">'+esc(h.y||h.gm||'')+' · '+esc(h.exch||'')+'</span></td>'+
-        '<td>'+h.ccy+'</td><td>'+fmt(h.qty, h.qty%1?4:0)+'</td><td>'+money(h.acb)+'</td>'+
-        '<td>'+money(c.priceNat)+dayHtml+'</td><td><b>'+money(c.mv)+'</b></td>'+
-        '<td class="'+cls+'">'+(c.gain>=0?'+':'')+money(c.gain)+'</td><td class="'+cls+'">'+(c.gain>=0?'+':'')+c.pct.toFixed(1)+'%</td></tr>';
+      const dayHtml = c.day==null?'':'<span class="'+(c.day>=0?'up':'dn')+'">'+(c.day>=0?'+':'')+c.day.toFixed(2)+'%</span>';
+      html += '<div class="holdrow'+(c.live?'':' stale')+'">'+
+        '<div class="hd-line1"><span class="hd-name">'+esc(h.name)+'<span class="sym">'+esc(h.y||h.gm||'')+(h.exch?' · '+esc(h.exch):'')+'</span></span>'+
+        '<span class="hd-value">'+money(c.mv)+'</span></div>'+
+        '<div class="hd-line2"><span class="hd-dim">'+esc(h.ccy)+' &middot; '+fmt(h.qty, h.qty%1?4:0)+' sh @ '+money(c.priceNat)+'</span>'+dayHtml+'</div>'+
+        '<div class="hd-line3"><span class="hd-dim">Book '+money(h.acb)+'</span>'+
+        '<span class="'+cls+'">'+(c.gain>=0?'+':'')+money(c.gain)+' ('+(c.gain>=0?'+':'')+c.pct.toFixed(1)+'%)</span></div>'+
+        '</div>';
     }
     for (const c of g.cash)
-      html += '<tr><td class="nm">Cash</td><td>'+esc(c.ccy)+'</td><td></td><td></td><td></td><td><b>'+money(c.amount)+'</b></td><td></td><td></td></tr>';
-    html += '</table></div></div>';
+      html += '<div class="holdrow"><div class="hd-line1"><span class="hd-name">Cash<span class="sym">'+esc(c.ccy)+'</span></span><span class="hd-value">'+money(c.amount)+'</span></div></div>';
+    html += '</div></div>';
   }
   html += '<div class="sum"><h2>Totals by account (native currency)</h2><table class="fit">';
   for (const t of natTotals)
