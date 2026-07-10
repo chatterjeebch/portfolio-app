@@ -331,12 +331,12 @@ function money(n){ return fmt(n, Math.abs(n)<100?2:0); }
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
 
-async function fetchVia(url, validate){
+async function fetchVia(url, validate, timeoutMs){
   const order = [...Array(PROXIES.length).keys()].map(i=>(proxyIdx+i)%PROXIES.length);
   for (const i of order){
     const p = PROXIES[i];
     try{
-      const r = await fetch(p.wrap(url), {signal: AbortSignal.timeout(25000)});
+      const r = await fetch(p.wrap(url), {signal: AbortSignal.timeout(timeoutMs||25000)});
       if(!r.ok) continue;
       const t = await r.text();
       const v = validate(t);
@@ -473,26 +473,44 @@ async function fetchNewsFor(sym){
   const to = torontoNow().date;
   const from = new Date(Date.now()-7*24*3600*1000).toISOString().slice(0,10);
   const url = 'https://finnhub.io/api/v1/company-news?symbol='+encodeURIComponent(sym)+'&from='+from+'&to='+to+'&token='+FINNHUB_KEY;
-  const items = await fetchVia(url, newsParse);
+  const items = await fetchVia(url, newsParse, 9000); // short timeout — headlines are non-critical, never block the page on them
   if (!items || !items.length) return [];
   return items.filter(x=>x.headline && x.url)
     .sort((a,b)=>b.datetime-a.datetime)
     .slice(0,2)
     .map(x=>({headline:x.headline, source:x.source||'', url:x.url, dt:x.datetime}));
 }
-async function getNewsForSymbols(symbols){
-  const cache = loadNewsCache(), now = Date.now(), out = {};
-  let dirty = false;
+// Split symbols into ones we already have a fresh cached answer for vs. ones that need fetching.
+function splitNewsCache(symbols){
+  const cache = loadNewsCache(), now = Date.now(), fresh = {}, stale = [];
   for (const sym of symbols){
     const hit = cache[sym];
-    if (hit && (now-hit.ts) < NEWS_TTL_MS){ out[sym] = hit.items; continue; }
-    out[sym] = await fetchNewsFor(sym);
-    cache[sym] = {ts:now, items:out[sym]};
-    dirty = true;
-    await sleep(150);
+    if (hit && (now-hit.ts) < NEWS_TTL_MS) fresh[sym] = hit.items;
+    else stale.push(sym);
   }
-  if (dirty) saveNewsCache(cache);
-  return out;
+  return {fresh, stale};
+}
+// Fetches news for `symbols` in the background (in parallel, not awaited by the caller) and
+// patches the results into any .mv-news-slot[data-sym=...] placeholders still in the DOM.
+async function loadMoverNewsAsync(symbols){
+  const cache = loadNewsCache();
+  await Promise.all(symbols.map(async sym=>{
+    let items = [];
+    try{ items = await fetchNewsFor(sym); }catch(e){}
+    cache[sym] = {ts:Date.now(), items};
+    if (tab==='snap'){
+      document.querySelectorAll('.mv-news-slot[data-sym="'+sym.replace(/"/g,'')+'"]').forEach(slot=>{
+        if (items.length){
+          slot.outerHTML = '<ul class="mv-news">'+items.map(it=>
+            '<li><a href="'+esc(it.url)+'" target="_blank" rel="noopener">'+esc(it.headline)+'</a><span class="mv-news-src">— '+esc(it.source)+'</span></li>'
+          ).join('')+'</ul>';
+        } else {
+          slot.remove();
+        }
+      });
+    }
+  }));
+  saveNewsCache(cache);
 }
 
 /* ---------------- snapshots ---------------- */
@@ -686,7 +704,7 @@ function renderFirstRun(){
   document.getElementById('status').textContent = 'No holdings loaded yet.';
 }
 
-function moverRow(m, cls, news){
+function moverRow(m, cls, news, pendingSym){
   let html = '<div class="moverrow2">'+
     '<div class="mv-line1"><span class="mv-name">'+esc(m.name)+'<span class="sym">'+esc(m.sym)+'</span></span>'+
     '<span class="mv-price">'+esc(m.ccy)+' '+money(m.price)+'</span></div>'+
@@ -695,6 +713,8 @@ function moverRow(m, cls, news){
     html += '<ul class="mv-news">'+news.map(it=>
       '<li><a href="'+esc(it.url)+'" target="_blank" rel="noopener">'+esc(it.headline)+'</a><span class="mv-news-src">— '+esc(it.source)+'</span></li>'
     ).join('')+'</ul>';
+  } else if (pendingSym){
+    html += '<div class="mv-news-slot" data-sym="'+esc(pendingSym)+'"></div>';
   }
   html += '</div>';
   return html;
@@ -734,7 +754,8 @@ async function renderSnap(){
   const upsPct   = [...movers].sort((a,b)=>b.pct-a.pct).filter(m=>m.pct>0).slice(0,5);
   const downsPct = [...movers].sort((a,b)=>a.pct-b.pct).filter(m=>m.pct<0).slice(0,5);
   const moverSyms = [...new Set([...upsAmt,...downsAmt,...upsPct,...downsPct].map(m=>finnhubSym(m.sym)).filter(Boolean))];
-  const moverNews = moverSyms.length ? await getNewsForSymbols(moverSyms) : {};
+  const {fresh: moverNews, stale: staleMoverSyms} = splitNewsCache(moverSyms);
+  const staleSet = new Set(staleMoverSyms);
 
   const snaps = (await allSnaps()).filter(s=>s.slot==='CLOSE').sort((a,b)=>a.date<b.date?-1:(a.date>b.date?1:0)).slice(-10);
   let barsHtml;
@@ -754,20 +775,22 @@ async function renderSnap(){
     '<div class="netchg '+chgCls+'">'+(totalChg>=0?'+':'')+'CA$ '+money(totalChg)+'<span class="pct">'+(totalChg>=0?'+':'')+totalPct.toFixed(2)+'%</span></div>'+
     '<div class="totval">Total portfolio: '+(curGrand/100000).toFixed(1)+' <span>&times;100K CAD (CA$ '+money(curGrand)+')</span></div>'+
     '<p class="hint">'+(haveAnyLive?'Live holdings vs. their previous close.':'No live quotes yet — tap Refresh above.')+'</p></div>';
+  const mrow = (m,cls) => { const sym = finnhubSym(m.sym); return moverRow(m, cls, moverNews[sym], staleSet.has(sym) ? sym : null); };
   html += '<div class="card"><h2>Top movers &mdash; by dollar amount</h2><div class="moverlist">'+
     '<div class="mv-sub">Gainers</div>'+
-    (upsAmt.length ? upsAmt.map(m=>moverRow(m,'up',moverNews[finnhubSym(m.sym)])).join('') : '<p class="hint">No gainers</p>')+
+    (upsAmt.length ? upsAmt.map(m=>mrow(m,'up')).join('') : '<p class="hint">No gainers</p>')+
     '<div class="mv-sub">Decliners</div>'+
-    (downsAmt.length ? downsAmt.map(m=>moverRow(m,'dn',moverNews[finnhubSym(m.sym)])).join('') : '<p class="hint">No decliners</p>')+
+    (downsAmt.length ? downsAmt.map(m=>mrow(m,'dn')).join('') : '<p class="hint">No decliners</p>')+
     '</div></div>';
   html += '<div class="card"><h2>Top movers &mdash; by percent change</h2><div class="moverlist">'+
     '<div class="mv-sub">Gainers</div>'+
-    (upsPct.length ? upsPct.map(m=>moverRow(m,'up',moverNews[finnhubSym(m.sym)])).join('') : '<p class="hint">No gainers</p>')+
+    (upsPct.length ? upsPct.map(m=>mrow(m,'up')).join('') : '<p class="hint">No gainers</p>')+
     '<div class="mv-sub">Decliners</div>'+
-    (downsPct.length ? downsPct.map(m=>moverRow(m,'dn',moverNews[finnhubSym(m.sym)])).join('') : '<p class="hint">No decliners</p>')+
+    (downsPct.length ? downsPct.map(m=>mrow(m,'dn')).join('') : '<p class="hint">No decliners</p>')+
     '</div></div>';
   html += '<div class="card"><h2>Value at close &mdash; last '+snaps.length+' trading day'+(snaps.length===1?'':'s')+'</h2>'+barsHtml+'</div>';
   view().innerHTML = html;
+  if (staleMoverSyms.length) loadMoverNewsAsync(staleMoverSyms); // fire-and-forget; never blocks the render
 }
 
 /* ---------------- summary (sector/class/currency/account allocation) ---------------- */
