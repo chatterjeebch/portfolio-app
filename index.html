@@ -63,6 +63,8 @@ textarea{font-family:monospace;font-size:12px}
 .cashamt{width:110px;text-align:right}
 .netchg{font-size:26px;font-weight:800}
 .netchg .pct{font-size:14px;font-weight:600;margin-left:8px}
+.totval{font-size:13px;color:var(--dim);margin-top:4px}
+.totval span{font-size:11px}
 .moverlist{margin-top:2px}
 .moverrow2{padding:7px 0;border-bottom:1px solid var(--bord)}
 .moverrow2:last-child{border-bottom:0}
@@ -102,6 +104,14 @@ textarea{font-family:monospace;font-size:12px}
 .hd-line2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:2px;font-size:12px}
 .hd-line3{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:2px;font-size:12px}
 .hd-dim{color:var(--dim)}
+.stackbar{display:flex;align-items:flex-end;gap:4px;height:150px;margin-top:10px}
+.stackbar .swrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+.stackbar .stack{width:100%;display:flex;flex-direction:column;border-radius:3px 3px 0 0;overflow:hidden;min-height:2px}
+.stackbar .seg{width:100%}
+.stackbar .slabel{font-size:9px;color:var(--dim);margin-top:4px;white-space:nowrap}
+.stacklegend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:10px}
+.stacklegend .lg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dim)}
+.stacklegend .sw{width:9px;height:9px;border-radius:2px;flex-shrink:0}
 </style>
 </head>
 <body>
@@ -633,27 +643,33 @@ function moverRow(m, cls){
 async function renderSnap(){
   if (!HOLDINGS.length){ renderFirstRun(); return; }
   const f = fx || STATIC_FX;
-  let totalChg = 0, prevGrand = 0, haveAnyLive = false;
-  const movers = [];
+  let totalChg = 0, prevGrand = 0, curGrand = 0, haveAnyLive = false;
+  const moverMap = new Map();
   for (const h of HOLDINGS){
     const q = getQ(h), c = rowCalc(h);
     const mvCAD = c.mv*(f[h.ccy]||1);
+    curGrand += mvCAD;
     if (q && q.prev){
       haveAnyLive = true;
       const cross = (f[h.qccy]||1)/(f[h.ccy]||1);
       const prevPriceNat = q.prev * h.scale * cross;
       const curPriceNat = q.p * h.scale * cross;
       const dChgCAD = h.qty*(curPriceNat-prevPriceNat)*(f[h.ccy]||1);
+      const prevValCAD = h.qty*prevPriceNat*(f[h.ccy]||1);
       totalChg += dChgCAD;
-      prevGrand += h.qty*prevPriceNat*(f[h.ccy]||1);
-      if (dChgCAD !== 0) movers.push({name:h.name, sym:h.y||h.gm||'', ccy:h.ccy, price:curPriceNat, chg:dChgCAD, pct: prevPriceNat>0 ? (curPriceNat-prevPriceNat)/prevPriceNat*100 : 0});
+      prevGrand += prevValCAD;
+      const key = h.y || h.gm || h.name;
+      if (!moverMap.has(key)) moverMap.set(key, {name:h.name, sym:h.y||h.gm||'', ccy:h.ccy, price:curPriceNat, chg:0, prevVal:0});
+      const m = moverMap.get(key);
+      m.chg += dChgCAD; m.prevVal += prevValCAD; m.price = curPriceNat; m.ccy = h.ccy;
     } else {
       prevGrand += mvCAD;
     }
   }
-  for (const c of CASH) prevGrand += c.amount*(f[c.ccy]||1);
+  for (const c of CASH){ const v = c.amount*(f[c.ccy]||1); prevGrand += v; curGrand += v; }
   const totalPct = prevGrand>0 ? totalChg/prevGrand*100 : 0;
   const chgCls = totalChg>=0 ? 'up' : 'dn';
+  const movers = [...moverMap.values()].filter(m=>m.chg!==0).map(m=>({...m, pct: m.prevVal>0 ? m.chg/m.prevVal*100 : 0}));
   const upsAmt   = [...movers].sort((a,b)=>b.chg-a.chg).filter(m=>m.chg>0).slice(0,5);
   const downsAmt = [...movers].sort((a,b)=>a.chg-b.chg).filter(m=>m.chg<0).slice(0,5);
   const upsPct   = [...movers].sort((a,b)=>b.pct-a.pct).filter(m=>m.pct>0).slice(0,5);
@@ -675,6 +691,7 @@ async function renderSnap(){
 
   let html = '<div class="card"><h2>Change since last close</h2>'+
     '<div class="netchg '+chgCls+'">'+(totalChg>=0?'+':'')+'CA$ '+money(totalChg)+'<span class="pct">'+(totalChg>=0?'+':'')+totalPct.toFixed(2)+'%</span></div>'+
+    '<div class="totval">Total portfolio: '+(curGrand/100000).toFixed(1)+' <span>&times;100K CAD (CA$ '+money(curGrand)+')</span></div>'+
     '<p class="hint">'+(haveAnyLive?'Live holdings vs. their previous close.':'No live quotes yet — tap Refresh above.')+'</p></div>';
   html += '<div class="card"><h2>Top movers &mdash; by dollar amount</h2><div class="moverlist">'+
     '<div class="mv-sub">Gainers</div>'+
@@ -723,7 +740,7 @@ function sectorOf(h){
   if (h.cls==='Fund' || h.cls==='ETF') return 'Fund/Diversified';
   return SECTOR_MAP[h.y||''] || 'Unclassified';
 }
-const BREAKDOWN_PALETTE = ['#4ea1ff','#b586ff','#ffb020','#3ddbd9','#ff8fb3','#c9d13f','#7d8bff','#ff9f5d'];
+const BREAKDOWN_PALETTE = ['#00d4ff','#ff6b6b','#ffd93d','#51e58f','#c77dff','#ff9f43','#4dd0e1','#f368a6'];
 const NEUTRAL_LABELS = ['Unclassified','Other','Cash & Other','Cash'];
 function computeBreakdown(mode){
   const f = fx || STATIC_FX;
@@ -1008,38 +1025,114 @@ function renderDividends(){
       '</table></div><p class="hint">Gross '+money(pGross)+' / yr · After-tax (corp accounts only) '+money(pAfter)+' / yr</p></div>';
   }
 
-  // upcoming payments (next 12 months)
-  const upcoming = [];
-  const horizon = new Date(Date.now()+365*86400000);
+  // month buckets: this calendar month + 11 more, grouped by entity (account)
+  const today = new Date();
+  const monthStart0 = new Date(today.getFullYear(), today.getMonth(), 1);
+  const months = [];
+  for (let i=0;i<12;i++){
+    const d = new Date(monthStart0.getFullYear(), monthStart0.getMonth()+i, 1);
+    months.push({
+      key: d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),
+      labelShort: d.toLocaleDateString('en-CA',{month:'short'}),
+      labelFull: d.toLocaleDateString('en-CA',{month:'long',year:'numeric'}),
+      start:d, end:new Date(d.getFullYear(), d.getMonth()+1, 1)
+    });
+  }
+  const rangeEnd = months[months.length-1].end;
+  const thisMonthKey = months[0].key;
+  const thisMonthEquity = new Map();
+  const monthlyByEntity = new Map();
+  for (const mo of months) monthlyByEntity.set(mo.key, new Map());
   for (const {h,d} of paying){
-    if (!d.nextDate || d.freq==='Irregular' || d.freq==='None') continue;
-    const stepDays = DIV_FREQ_DAYS[d.freq] || 91;
+    const stepDays = DIV_FREQ_DAYS[d.freq];
+    if (!stepDays || !d.nextDate) continue;
     let dt = new Date(d.nextDate);
     let guard = 0;
-    while (dt <= horizon && guard<40){
-      const perPayNative = d.rate/((365/stepDays)||1);
+    while (dt < monthStart0 && guard<80){ dt = new Date(dt.getTime()+stepDays*86400000); guard++; }
+    const perPayNative = d.rate/(365/stepDays);
+    const corp = isCorp(h);
+    const entity = (h.entity||'').trim() || 'Other';
+    guard = 0;
+    while (dt < rangeEnd && guard<60){
+      const monthKey = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');
       const grossCAD = h.qty*perPayNative*(f[h.ccy]||1);
-      const corp = isCorp(h);
       const tx = corp ? divTaxCalc(grossCAD, h.divType, h.divWHT) : null;
-      upcoming.push({date:dt.toISOString().slice(0,10), name:h.name, sym:h.y||h.gm||'', acct:acctKey(h), pref:h.cls==='Preferred', grossCAD, corp, afterTaxCAD: tx ? tx.afterTax : null});
+      const afterTaxCAD = corp ? (tx.afterTax==null?grossCAD:tx.afterTax) : grossCAD;
+      const atMap = monthlyByEntity.get(monthKey);
+      if (atMap){
+        if (!atMap.has(entity)) atMap.set(entity, {gross:0, afterTax:0});
+        const e = atMap.get(entity);
+        e.gross += grossCAD; e.afterTax += afterTaxCAD;
+      }
+      if (monthKey===thisMonthKey){
+        const key = h.y||h.gm||h.name;
+        if (!thisMonthEquity.has(key)) thisMonthEquity.set(key, {name:h.name, sym:h.y||h.gm||'', gross:0, afterTax:0, hasCorp:false, hasUnclassified:false, accts:new Set()});
+        const eq = thisMonthEquity.get(key);
+        eq.gross += grossCAD; eq.accts.add(acctKey(h));
+        if (corp){ eq.hasCorp = true; eq.afterTax += afterTaxCAD; if (tx.afterTax==null) eq.hasUnclassified = true; }
+      }
       dt = new Date(dt.getTime()+stepDays*86400000);
       guard++;
     }
   }
-  upcoming.sort((a,b)=>a.date<b.date?-1:1);
-  html += '<div class="card"><h2>Upcoming payments (next 12 months)</h2>';
-  if (!upcoming.length){
-    html += '<p class="hint">No projectable payment dates yet — set a Next pay date on Holdings &rarr; Edit, or fetch dividend history above.</p>';
+
+  // this month, combined per equity across accounts
+  const thisMonthList = [...thisMonthEquity.values()].sort((a,b)=>b.gross-a.gross);
+  html += '<div class="card"><h2>Expected this month &mdash; '+months[0].labelFull+'</h2>';
+  if (!thisMonthList.length){
+    html += '<p class="hint">No dividends/distributions expected this month based on current data.</p>';
   } else {
-    html += '<div class="twrap"><table class="fit"><tr><th>Date</th><th>Security</th><th>Account</th><th>Gross</th><th>After-tax</th></tr>'+
-      upcoming.slice(0,60).map(u=>
-        '<tr><td class="nm">'+u.date+'</td><td class="nm">'+esc(u.name)+(u.pref?' <span class="pill" style="padding:1px 6px">PREF</span>':'')+'<br><span class="sym">'+esc(u.sym)+'</span></td>'+
-        '<td class="nm">'+esc(u.acct)+'</td><td>'+money(u.grossCAD)+'</td>'+
-        '<td>'+(u.corp ? (u.afterTaxCAD==null?'<span class="hint">unclassified</span>':money(u.afterTaxCAD)) : '<span class="hint">—</span>')+'</td></tr>'
-      ).join('')+'</table></div>'+
-      (upcoming.length>60?'<p class="hint">Showing first 60 of '+upcoming.length+' projected payments.</p>':'');
+    html += '<div class="moverlist">'+thisMonthList.map(eq=>
+      '<div class="moverrow2"><div class="mv-line1"><span class="mv-name">'+esc(eq.name)+'<span class="sym">'+esc(eq.sym)+'</span></span>'+
+      '<span class="mv-price">'+money(eq.gross)+'</span></div>'+
+      '<div class="mv-line2"><span class="hd-dim">'+esc([...eq.accts].join(', '))+'</span>'+
+      (eq.hasCorp ? '<span>'+money(eq.afterTax)+(eq.hasUnclassified?' *':'')+' after-tax</span>' : '<span class="hint">&mdash; personal</span>')+
+      '</div></div>'
+    ).join('')+'</div>';
   }
   html += '</div>';
+
+  // stacked bar chart by month, segmented by account/entity
+  const entityTotals = new Map();
+  for (const mo of months) for (const [e,v] of monthlyByEntity.get(mo.key)) entityTotals.set(e, (entityTotals.get(e)||0)+v.gross);
+  const sortedEntities = [...entityTotals.entries()].sort((a,b)=>b[1]-a[1]).map(([e])=>e);
+  const MAXE = 7;
+  const entityOrder = sortedEntities.slice(0,MAXE);
+  if (sortedEntities.length>MAXE) entityOrder.push('Other');
+  const entityColor = new Map(entityOrder.map((e,i)=>[e, BREAKDOWN_PALETTE[i%BREAKDOWN_PALETTE.length]]));
+  const monthEntityValues = (monthKey) => {
+    const atMap = monthlyByEntity.get(monthKey);
+    const out = new Map(entityOrder.map(e=>[e,0]));
+    for (const [e,v] of atMap){ const bucket = entityOrder.includes(e)?e:'Other'; out.set(bucket, (out.get(bucket)||0)+v.gross); }
+    return out;
+  };
+  const monthTotals = months.map(mo=>[...monthEntityValues(mo.key).values()].reduce((a,b)=>a+b,0));
+  const maxTotal = Math.max(...monthTotals, 1);
+  const stackHtml = '<div class="stackbar">'+months.map((mo,i)=>{
+    const vals = monthEntityValues(mo.key), total = monthTotals[i];
+    const wrapH = (total/maxTotal*100);
+    const segs = entityOrder.map(e=>{
+      const v = vals.get(e)||0;
+      if (!v || total<=0) return '';
+      return '<div class="seg" style="height:'+(v/total*100).toFixed(2)+'%;background:'+entityColor.get(e)+'" title="'+esc(e)+': CA$ '+money(v)+'"></div>';
+    }).join('');
+    return '<div class="swrap"><div class="stack" style="height:'+wrapH.toFixed(1)+'%" title="'+mo.labelFull+': CA$ '+money(total)+'">'+segs+'</div><div class="slabel">'+mo.labelShort+'</div></div>';
+  }).join('')+'</div>';
+  const legendHtml = '<div class="stacklegend">'+entityOrder.map(e=>{
+    const total = e==='Other' ? sortedEntities.filter(k=>!entityOrder.includes(k)).reduce((a,k)=>a+entityTotals.get(k),0) : entityTotals.get(e);
+    return '<div class="lg"><span class="sw" style="background:'+entityColor.get(e)+'"></span>'+esc(e)+' ('+money(total)+')</div>';
+  }).join('')+'</div>';
+  html += '<div class="card"><h2>Monthly dividend income by account (next 12 months)</h2>'+stackHtml+legendHtml+'</div>';
+
+  // monthly totals table
+  html += '<div class="card"><h2>Monthly totals</h2><div class="twrap"><table class="fit"><tr><th>Month</th><th>Gross</th><th>After-tax</th></tr>'+
+    months.map(mo=>{
+      let g=0, at=0;
+      for (const v of monthlyByEntity.get(mo.key).values()){ g+=v.gross; at+=v.afterTax; }
+      return '<tr><td class="nm">'+mo.labelFull+'</td><td>'+money(g)+'</td><td>'+money(at)+'</td></tr>';
+    }).join('')+
+    '</table></div><p class="hint">After-tax reflects corporate accounts only (SAJE, SCMPC, AGMPC); personal accounts are shown at gross. * = includes holdings with no Dividend type set.</p></div>';
+
   view().innerHTML = html;
 }
 
