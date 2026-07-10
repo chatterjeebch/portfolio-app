@@ -112,6 +112,13 @@ textarea{font-family:monospace;font-size:12px}
 .stacklegend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:10px}
 .stacklegend .lg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dim)}
 .stacklegend .sw{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+.chartbox{background:#ffffff;border-radius:10px;padding:14px 10px 10px;margin-top:8px}
+.chartbox .barchart, .chartbox .stackbar{margin-top:0}
+.chartbox .blabel, .chartbox .slabel{color:#5d6675}
+.chartbox .pie-wrap{margin:6px auto 4px}
+.chartbox .pie-hole{background:#ffffff}
+.chartbox .pie-hole b{color:#1a1f29}
+.chartbox .pie-hole span{color:#5d6675}
 </style>
 </head>
 <body>
@@ -680,11 +687,11 @@ async function renderSnap(){
   if (snaps.length){
     const vals = snaps.map(s=>s.grandCAD);
     const min = Math.min(...vals), max = Math.max(...vals), range = (max-min)||1;
-    barsHtml = '<div class="barchart">'+snaps.map(s=>{
+    barsHtml = '<div class="chartbox"><div class="barchart">'+snaps.map(s=>{
       const pct = snaps.length>1 ? ((s.grandCAD-min)/range*80+15) : 50;
       return '<div class="bwrap"><div class="bar" style="height:'+pct.toFixed(1)+'%" title="'+s.date+': CA$ '+money(s.grandCAD)+'"></div>'+
         '<div class="blabel">'+esc(s.date.slice(5))+'</div></div>';
-    }).join('')+'</div>';
+    }).join('')+'</div></div>';
   } else {
     barsHtml = '<p class="hint">No CLOSE snapshots yet — check back after the app captures a market close.</p>';
   }
@@ -789,8 +796,8 @@ function renderSummary(){
       const start=acc, end=acc+s.pct; acc=end;
       return s.color+' '+start.toFixed(2)+'% '+end.toFixed(2)+'%';
     }).join(', ');
-    html += '<div class="pie-wrap"><div class="pie" style="background:conic-gradient('+stops+')"></div>'+
-      '<div class="pie-hole"><b>CA$ '+(total/100000).toFixed(1)+'</b><span>&times;100K total</span></div></div>'+
+    html += '<div class="chartbox"><div class="pie-wrap"><div class="pie" style="background:conic-gradient('+stops+')"></div>'+
+      '<div class="pie-hole"><b>CA$ '+(total/100000).toFixed(1)+'</b><span>&times;100K total</span></div></div></div>'+
       '<p class="hint">Values below are in CA$100K increments (e.g. 3.5 = CA$350,000).</p>'+
       '<div class="legend2">'+arr.map(s=>
         '<div class="lrow"><span class="swatch" style="background:'+s.color+'"></span>'+
@@ -1122,7 +1129,7 @@ function renderDividends(){
     const total = e==='Other' ? sortedEntities.filter(k=>!entityOrder.includes(k)).reduce((a,k)=>a+entityTotals.get(k),0) : entityTotals.get(e);
     return '<div class="lg"><span class="sw" style="background:'+entityColor.get(e)+'"></span>'+esc(e)+' ('+money(total)+')</div>';
   }).join('')+'</div>';
-  html += '<div class="card"><h2>Monthly dividend income by account (next 12 months)</h2>'+stackHtml+legendHtml+'</div>';
+  html += '<div class="card"><h2>Monthly dividend income by account (next 12 months)</h2><div class="chartbox">'+stackHtml+'</div>'+legendHtml+'</div>';
 
   // monthly totals table
   html += '<div class="card"><h2>Monthly totals</h2><div class="twrap"><table class="fit"><tr><th>Month</th><th>Gross</th><th>After-tax</th></tr>'+
