@@ -61,12 +61,74 @@ textarea{font-family:monospace;font-size:12px}
 .rowbtns{display:flex;gap:6px;justify-content:flex-end}
 .hint{font-size:11px;color:var(--dim);margin-top:6px;line-height:1.5}
 .cashamt{width:110px;text-align:right}
+.netchg{font-size:26px;font-weight:800}
+.netchg .pct{font-size:14px;font-weight:600;margin-left:8px}
+.totval{font-size:13px;color:var(--dim);margin-top:4px}
+.totval span{font-size:11px}
+.moverlist{margin-top:2px}
+.moverrow2{padding:7px 0;border-bottom:1px solid var(--bord)}
+.moverrow2:last-child{border-bottom:0}
+.mv-line1{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.mv-line2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:1px}
+.mv-name{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.mv-name .sym{color:var(--dim);font-size:11px;margin-left:6px}
+.mv-price{font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mv-chg{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mv-sub{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.3px;margin:10px 0 2px}
+.mv-sub:first-child{margin-top:0}
+.barchart{display:flex;align-items:flex-end;gap:4px;height:90px;margin-top:10px}
+.barchart .bwrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+.barchart .bar{width:100%;background:var(--acc);border-radius:3px 3px 0 0;min-height:2px}
+.barchart .blabel{font-size:9px;color:var(--dim);margin-top:4px;white-space:nowrap}
+.grouptoggle{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.pie-wrap{position:relative;width:170px;height:170px;margin:6px auto 14px}
+.pie{width:100%;height:100%;border-radius:50%}
+.pie-hole{position:absolute;inset:24%;background:var(--card);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;line-height:1.25}
+.pie-hole b{font-size:14px}
+.pie-hole span{font-size:8px;color:var(--dim);margin-top:2px}
+.legend2{margin-top:4px}
+.legend2 .lrow{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--bord)}
+.legend2 .lrow:last-child{border-bottom:0}
+.legend2 .swatch{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.legend2 .llabel{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.legend2 .lval{font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.holdlist{padding:0 12px}
+.holdrow{padding:8px 0;border-bottom:1px solid var(--bord)}
+.holdrow:last-child{border-bottom:0}
+.holdrow.stale{opacity:.6}
+.holdrow.stale .hd-name::after{content:" °";color:#e8b93c}
+.hd-line1{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.hd-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.hd-name .sym{color:var(--dim);font-weight:400;font-size:11px;margin-left:6px}
+.hd-value{font-size:14px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.hd-line2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:2px;font-size:12px}
+.hd-line3{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:2px;font-size:12px}
+.hd-dim{color:var(--dim)}
+.stackbar{display:flex;align-items:flex-end;gap:4px;height:150px;margin-top:10px}
+.stackbar .swrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+.stackbar .stack{width:100%;display:flex;flex-direction:column;border-radius:3px 3px 0 0;overflow:hidden;min-height:2px}
+.stackbar .seg{width:100%}
+.stackbar .slabel{font-size:9px;color:var(--dim);margin-top:4px;white-space:nowrap}
+.stacklegend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:10px}
+.stacklegend .lg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dim)}
+.stacklegend .sw{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+.chartbox{background:#ffffff;border-radius:10px;padding:14px 10px 10px;margin-top:8px}
+.chartbox .barchart, .chartbox .stackbar{margin-top:0}
+.chartbox .blabel, .chartbox .slabel{color:#5d6675}
+.chartbox .pie-wrap{margin:6px auto 4px}
+.chartbox .pie-hole{background:#ffffff}
+.chartbox .pie-hole b{color:#1a1f29}
+.chartbox .pie-hole span{color:#5d6675}
 </style>
 </head>
 <body>
 <h1>Portfolio Tracker</h1>
 <p class="sub" id="subline">Live-priced holdings &middot; data stored on this device only</p>
 <div class="tabs">
+  <button id="tb-snap" onclick="setTab('snap')">Snapshot</button>
+  <button id="tb-sum" onclick="setTab('sum')">Summary</button>
+  <button id="tb-tax" onclick="setTab('tax')">Tax</button>
+  <button id="tb-div" onclick="setTab('div')">Dividends</button>
   <button id="tb-port" class="on" onclick="setTab('port')">Portfolio</button>
   <button id="tb-hold" onclick="setTab('hold')">Holdings</button>
   <button id="tb-cash" onclick="setTab('cash')">Cash</button>
@@ -83,8 +145,7 @@ textarea{font-family:monospace;font-size:12px}
 <div class="foot" id="foot">
 ° = live quote unavailable, showing fallback price.<br>
 Stock/ETF prices from Yahoo Finance (delayed up to 15&nbsp;min). Fund NAVs update once daily after close; some funds scraped from The Globe and Mail. FX from frankfurter.dev (ECB daily).<br>
-Mover headlines from Finnhub (company news API), cached up to 1&nbsp;hour.<br>
-Snapshots auto-save when the app is open (or next opened) after 10:00 and after market close (16:15 ET), Mon&ndash;Fri.
+One snapshot auto-saves per weekday, at market close (16:15 ET or later), when the app is backgrounded or closed.
 </div>
 <script>
 'use strict';
@@ -93,8 +154,8 @@ const LS_H='pt_holdings', LS_C='pt_cash';
 let HOLDINGS = [], CASH = [];
 try{ HOLDINGS = JSON.parse(localStorage.getItem(LS_H)) || []; }catch(e){}
 try{ CASH = JSON.parse(localStorage.getItem(LS_C)) || []; }catch(e){}
-function saveH(){ localStorage.setItem(LS_H, JSON.stringify(HOLDINGS)); }
-function saveC(){ localStorage.setItem(LS_C, JSON.stringify(CASH)); }
+function saveH(){ localStorage.setItem(LS_H, JSON.stringify(HOLDINGS)); schedulePush(); }
+function saveC(){ localStorage.setItem(LS_C, JSON.stringify(CASH)); schedulePush(); }
 
 /* IndexedDB for snapshots */
 let dbp = null;
@@ -119,6 +180,130 @@ const putSnap  = s  => idb('readwrite', st=>st.put(s));
 const getSnap  = id => idb('readonly',  st=>st.get(id));
 const delSnap  = id => idb('readwrite', st=>st.delete(id));
 const allSnaps = () => idb('readonly',  st=>st.getAll());
+
+/* ---------------- cloud sync (encrypted private Gist) ---------------- */
+/* Holdings & cash sync across devices. Data is AES-256-GCM encrypted client-side
+   with a passphrase before it ever leaves the device — GitHub only stores ciphertext.
+   Snapshot history is intentionally NOT synced (stays local per device; use the
+   full JSON backup/restore below if you want to merge history manually). */
+const LS_TOK='pt_sync_token', LS_GIST='pt_sync_gist', LS_PASS='pt_sync_pass', LS_SALT='pt_sync_salt', LS_UPD='pt_sync_updated';
+let SYNC = {
+  token: localStorage.getItem(LS_TOK) || '',
+  gist:  localStorage.getItem(LS_GIST) || '',
+  pass:  localStorage.getItem(LS_PASS) || '',
+  salt:  localStorage.getItem(LS_SALT) || '',
+};
+function syncOn(){ return !!(SYNC.token && SYNC.gist && SYNC.pass); }
+function b64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function unb64(s){ return Uint8Array.from(atob(s), c=>c.charCodeAt(0)); }
+async function deriveKey(pass, saltB64){
+  const enc = new TextEncoder();
+  const base = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt:unb64(saltB64), iterations:150000, hash:'SHA-256'},
+    base, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']
+  );
+}
+async function encryptBlob(obj, pass, saltB64){
+  const key = await deriveKey(pass, saltB64);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = new TextEncoder().encode(JSON.stringify(obj));
+  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, data);
+  return {v:1, salt:saltB64, iv:b64(iv), ct:b64(ct)};
+}
+async function decryptBlob(blob, pass){
+  const key = await deriveKey(pass, blob.salt);
+  const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv:unb64(blob.iv)}, key, unb64(blob.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+const GIST_FILE = 'portfolio.sync.json';
+async function ghGist(method, path, body){
+  const r = await fetch('https://api.github.com/gists'+path, {
+    method, headers:{
+      'Authorization':'Bearer '+SYNC.token,
+      'Accept':'application/vnd.github+json',
+      ...(body?{'Content-Type':'application/json'}:{})
+    },
+    body: body?JSON.stringify(body):undefined
+  });
+  if (!r.ok) throw new Error('GitHub API '+r.status+': '+(await r.text()).slice(0,200));
+  return r.json();
+}
+async function syncCreate(pass){
+  const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+  const updatedAt = new Date().toISOString();
+  const blob = await encryptBlob({holdings:HOLDINGS, cash:CASH, updatedAt}, pass, salt);
+  const g = await ghGist('POST', '', {description:'Portfolio Tracker sync (encrypted — do not edit on github.com)', public:false,
+    files:{[GIST_FILE]:{content: JSON.stringify(blob)}}});
+  SYNC = {token:SYNC.token, gist:g.id, pass, salt};
+  localStorage.setItem(LS_GIST, g.id); localStorage.setItem(LS_PASS, pass); localStorage.setItem(LS_SALT, salt);
+  localStorage.setItem(LS_UPD, updatedAt);
+  return g.id;
+}
+async function syncPush(){
+  if (!syncOn()) return;
+  const updatedAt = new Date().toISOString();
+  const blob = await encryptBlob({holdings:HOLDINGS, cash:CASH, updatedAt}, SYNC.pass, SYNC.salt);
+  await ghGist('PATCH', '/'+SYNC.gist, {files:{[GIST_FILE]:{content: JSON.stringify(blob)}}});
+  localStorage.setItem(LS_UPD, updatedAt);
+}
+async function syncPull(apply){
+  if (!SYNC.token || !SYNC.gist || !SYNC.pass) return null;
+  const g = await ghGist('GET', '/'+SYNC.gist);
+  const f = g.files && g.files[GIST_FILE]; if (!f) return null;
+  const blob = JSON.parse(f.content);
+  if (!SYNC.salt){ SYNC.salt = blob.salt; localStorage.setItem(LS_SALT, blob.salt); }
+  const data = await decryptBlob(blob, SYNC.pass);
+  const localUpd = localStorage.getItem(LS_UPD) || '';
+  if (apply && data.updatedAt > localUpd){
+    HOLDINGS = data.holdings||[]; CASH = data.cash||[];
+    localStorage.setItem(LS_H, JSON.stringify(HOLDINGS));
+    localStorage.setItem(LS_C, JSON.stringify(CASH));
+    localStorage.setItem(LS_UPD, data.updatedAt);
+    quotes = {};
+    if (tab==='port') renderPort(); if (tab==='hold') renderHold(); if (tab==='cash') renderCash(); if (tab==='snap') renderSnap(); if (tab==='sum') renderSummary(); if (tab==='tax') renderTax(); if (tab==='div') renderDividends();
+  }
+  return data;
+}
+let pushTimer = null;
+function schedulePush(){
+  if (!syncOn()) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(()=>{ syncPush().catch(e=>console.warn('sync push failed', e)); }, 4000);
+}
+async function uiSyncSetup(){
+  const tok = document.getElementById('s_tok').value.trim();
+  const pass = document.getElementById('s_pass').value;
+  const gist = document.getElementById('s_gist').value.trim();
+  if (!tok || !pass){ alert('Token and passphrase are required.'); return; }
+  SYNC.token = tok; localStorage.setItem(LS_TOK, tok);
+  try{
+    if (gist){
+      SYNC.gist = gist; SYNC.pass = pass;
+      localStorage.setItem(LS_GIST, gist); localStorage.setItem(LS_PASS, pass);
+      const data = await syncPull(true);
+      if (!data) throw new Error('Gist has no sync file on it — check the Gist ID.');
+    } else {
+      const id = await syncCreate(pass);
+      alert('Sync gist created.\n\nGist ID:\n'+id+'\n\nEnter this ID together with the same passphrase on your other device to connect it.');
+    }
+    renderData();
+  }catch(e){ alert('Sync setup failed: '+e.message); }
+}
+async function uiSyncNow(){
+  const st = document.getElementById('syncstat');
+  if (st) st.textContent = 'Syncing…';
+  try{
+    await syncPush(); await syncPull(true);
+    if (document.getElementById('syncstat')) document.getElementById('syncstat').textContent = 'Synced '+new Date().toLocaleTimeString('en-CA');
+  }catch(e){ if (document.getElementById('syncstat')) document.getElementById('syncstat').textContent = 'Sync failed: '+e.message; }
+}
+function uiSyncOff(){
+  if (!confirm('Disconnect cloud sync on this device? Local holdings/cash stay as-is; the gist itself is untouched.')) return;
+  SYNC = {token:'',gist:'',pass:'',salt:''};
+  [LS_TOK,LS_GIST,LS_PASS,LS_SALT,LS_UPD].forEach(k=>localStorage.removeItem(k));
+  renderData();
+}
 
 /* ---------------- quote pipeline (verified) ---------------- */
 const STATIC_FX = {CAD:1, USD:1.4224, JPY:0.008742, GBP:1.8833, HKD:0.18134};
@@ -244,7 +429,10 @@ async function refresh(){
   st.textContent = 'Updated '+lastUpdate.toLocaleString('en-CA')+(usedProxy!=='—'?' · via '+usedProxy:'')+
     (live<HOLDINGS.length?' · '+(HOLDINGS.length-live)+' rows on fallback prices (°)':'');
   if (tab==='port') renderPort();
-  await checkAutoSnap();
+  if (tab==='snap') renderSnap();
+  if (tab==='sum') renderSummary();
+  if (tab==='tax') renderTax();
+  if (tab==='div') renderDividends();
 }
 function getQ(h){ return h.y ? quotes[h.y] : quotes['GM:'+h.gm]; }
 function rowCalc(h){
@@ -260,98 +448,6 @@ function rowCalc(h){
   return {mv, priceNat, day, live, gain: mv-h.acb, pct: h.acb>0 ? (mv-h.acb)/h.acb*100 : 0};
 }
 const acctKey = x => x.entity+(x.broker?' · '+x.broker:'')+(x.account?' '+x.account:'')+' ('+(x.atype||'')+')';
-
-/* ---------------- movers & news ---------------- */
-const FINNHUB_KEY = 'd98ki41r01qugfuve01gd98ki41r01qugfuve020';
-const LS_NEWS = 'pt_news_cache';
-const NEWS_TTL_MS = 60*60*1000; // re-fetch headlines at most once per hour
-const MOVERS_N = 3; // symbols per category (gainers / decliners / biggest % move)
-
-function finnhubSym(h){
-  if (!h.y) return null;
-  const s = h.y.replace(/\.[A-Za-z]+$/, ''); // strip exchange suffix, e.g. CM.TO -> CM
-  return s || null;
-}
-function topMovers(n){
-  const list = HOLDINGS.map(h=>({h, c:rowCalc(h)})).filter(x=>x.c.day!=null && finnhubSym(x.h));
-  const gainers   = [...list].filter(x=>x.c.day>0).sort((a,b)=>b.c.day-a.c.day).slice(0,n);
-  const decliners = [...list].filter(x=>x.c.day<0).sort((a,b)=>a.c.day-b.c.day).slice(0,n);
-  const byAbs     = [...list].sort((a,b)=>Math.abs(b.c.day)-Math.abs(a.c.day)).slice(0,n);
-  return {gainers, decliners, byAbs};
-}
-function loadNewsCache(){ try{ return JSON.parse(localStorage.getItem(LS_NEWS))||{}; }catch(e){ return {}; } }
-function saveNewsCache(c){ try{ localStorage.setItem(LS_NEWS, JSON.stringify(c)); }catch(e){} }
-function newsParse(t){
-  try{ const j = JSON.parse(t); return Array.isArray(j) ? j : null; }catch(e){ return null; }
-}
-async function fetchNewsFor(sym){
-  const to = torontoNow().date;
-  const from = new Date(Date.now()-7*24*3600*1000).toISOString().slice(0,10);
-  const url = 'https://finnhub.io/api/v1/company-news?symbol='+encodeURIComponent(sym)+'&from='+from+'&to='+to+'&token='+FINNHUB_KEY;
-  const items = await fetchVia(url, newsParse);
-  if (!items || !items.length) return [];
-  return items.filter(x=>x.headline && x.url)
-    .sort((a,b)=>b.datetime-a.datetime)
-    .slice(0,2)
-    .map(x=>({headline:x.headline, source:x.source||'', url:x.url, dt:x.datetime}));
-}
-async function getNewsForSymbols(symbols){
-  const cache = loadNewsCache(), now = Date.now(), out = {};
-  let dirty = false;
-  for (const sym of symbols){
-    const hit = cache[sym];
-    if (hit && (now-hit.ts) < NEWS_TTL_MS){ out[sym] = hit.items; continue; }
-    out[sym] = await fetchNewsFor(sym);
-    cache[sym] = {ts:now, items:out[sym]};
-    dirty = true;
-    await sleep(150);
-  }
-  if (dirty) saveNewsCache(cache);
-  return out;
-}
-function moverRow(h, c, news){
-  const cls = c.day>=0?'up':'dn';
-  let html = '<div style="margin-bottom:10px"><b>'+esc(h.name)+'</b> <span class="'+cls+'">'+(c.day>=0?'+':'')+c.day.toFixed(2)+'%</span><br><span class="sym">'+esc(h.y||'')+'</span>';
-  if (news && news.length){
-    html += '<ul style="margin:4px 0 0 16px;padding:0">';
-    for (const it of news)
-      html += '<li style="font-size:12px;margin-bottom:3px;list-style:disc"><a href="'+esc(it.url)+'" target="_blank" rel="noopener" style="color:var(--acc);text-decoration:none">'+esc(it.headline)+'</a> <span style="color:var(--dim)">— '+esc(it.source)+'</span></li>';
-    html += '</ul>';
-  } else {
-    html += '<div class="hint">No recent headlines found.</div>';
-  }
-  html += '</div>';
-  return html;
-}
-async function renderMoversCard(){
-  const m = topMovers(MOVERS_N);
-  const all = [...m.gainers, ...m.decliners, ...m.byAbs];
-  if (!all.length) return '';
-  const symbols = [...new Set(all.map(x=>finnhubSym(x.h)))];
-  const news = await getNewsForSymbols(symbols);
-  const section = (title, arr) => {
-    if (!arr.length) return '';
-    let h = '<h3 style="font-size:13px;margin:10px 0 6px;color:var(--dim);text-transform:uppercase;letter-spacing:.4px">'+title+'</h3>';
-    for (const {h:hd, c} of arr) h += moverRow(hd, c, news[finnhubSym(hd)]);
-    return h;
-  };
-  return '<div class="card"><h2>Top movers — news</h2>'+
-    section('Gainers', m.gainers)+section('Decliners', m.decliners)+section('Biggest % move', m.byAbs)+
-    '<p class="hint">Headlines from Finnhub, cached up to 1 hour.</p></div>';
-}
-async function updateMovers(){
-  if (tab!=='port') return;
-  const el = document.getElementById('movers');
-  if (!el) return;
-  el.innerHTML = '<div class="card"><h2>Top movers — news</h2><p class="hint">Loading headlines…</p></div>';
-  try{
-    const html = await renderMoversCard();
-    if (tab==='port' && document.getElementById('movers')) document.getElementById('movers').innerHTML = html;
-  }catch(e){
-    if (tab==='port' && document.getElementById('movers')) document.getElementById('movers').innerHTML =
-      '<div class="card"><h2>Top movers — news</h2><p class="hint">Could not load headlines.</p></div>';
-  }
-}
 
 /* ---------------- snapshots ---------------- */
 function torontoNow(){
@@ -391,15 +487,14 @@ async function saveSnap(slot, silent){
   return s;
 }
 async function checkAutoSnap(){
+  // One CLOSE snapshot per weekday, taken when the app is backgrounded/closed at or after market close.
   if (!HOLDINGS.length || busy) return;
   const t = torontoNow();
   if (t.dow==='Sat' || t.dow==='Sun') return;
-  let want = null;
-  if (t.hm >= '16:15') want = 'CLOSE';
-  else if (t.hm >= '10:00') want = 'AM';
-  if (!want) return;
+  if (t.hm < '16:15') return;
+  const want = 'CLOSE';
   if (await getSnap(t.date+'|'+want)) return;
-  // need fresh quotes: if never refreshed or older than 10 min, refresh first (refresh re-calls checkAutoSnap)
+  // need fresh quotes: if never refreshed or older than 10 min, refresh first
   if (!lastUpdate || (Date.now()-lastUpdate.getTime()) > 10*60*1000){
     if (!refreshQueued){ refreshQueued = true; await refresh(); refreshQueued = false; }
     if (!lastUpdate) return; // refresh failed entirely
@@ -440,11 +535,11 @@ async function exportTotalsCSV(){
   for (const s of snaps){
     const by = new Map();
     for (const r of s.rows){
-      const k = r.slice(0,4).join('');
+      const k = r.slice(0,4).join('');
       by.set(k, (by.get(k)||0) + (r[11]||0));
     }
     for (const [k,v] of by){
-      const [e,b,a,at] = k.split('');
+      const [e,b,a,at] = k.split('');
       lines.push([s.date,s.slot,s.capturedAt,e,b,a,at,v,s.grandCAD,s.fx.USD].map(csvCell).join(','));
     }
   }
@@ -482,9 +577,9 @@ async function importFile(file, isRestore){
 let tab = 'port';
 function setTab(t){
   tab = t;
-  for (const id of ['port','hold','cash','data']) document.getElementById('tb-'+id).className = (id===t?'on':'');
-  document.getElementById('portbar').style.display = (t==='port') ? 'flex' : 'none';
-  ({port:renderPort, hold:renderHold, cash:renderCash, data:renderData})[t]();
+  for (const id of ['snap','sum','tax','div','port','hold','cash','data']) document.getElementById('tb-'+id).className = (id===t?'on':'');
+  document.getElementById('portbar').style.display = (t==='port'||t==='snap'||t==='sum'||t==='tax'||t==='div') ? 'flex' : 'none';
+  ({snap:renderSnap, sum:renderSummary, tax:renderTax, div:renderDividends, port:renderPort, hold:renderHold, cash:renderCash, data:renderData})[t]();
 }
 const view = ()=>document.getElementById('view');
 
@@ -512,26 +607,28 @@ function renderPort(){
     grandCAD += acctCAD;
     natTotals.push({k, byCcy, acctCAD});
     html += '<div class="acct"><div class="ahdr"><b>'+esc(k)+'</b><span class="cad">CA$ '+money(acctCAD)+'</span><span class="nat">'+
-      Object.entries(byCcy).map(([c,v])=>c+' '+money(v)).join(' + ')+'</span></div><div class="twrap"><table><tr><th>Security</th><th>Ccy</th><th>Shares</th><th>Book</th><th>Price</th><th>Value</th><th>Gain</th><th>Gain %</th></tr>';
+      Object.entries(byCcy).map(([c,v])=>c+' '+money(v)).join(' + ')+'</span></div><div class="holdlist">';
     for (const {h,c} of calcs){
       const cls = c.gain>=0?'up':'dn';
-      const dayHtml = c.day==null?'':'<span class="day '+(c.day>=0?'up':'dn')+'">'+(c.day>=0?'+':'')+c.day.toFixed(2)+'%</span>';
-      html += '<tr'+(c.live?'':' class="stale"')+'><td class="nm">'+esc(h.name)+'<br><span class="sym">'+esc(h.y||h.gm||'')+' · '+esc(h.exch||'')+'</span></td>'+
-        '<td>'+h.ccy+'</td><td>'+fmt(h.qty, h.qty%1?4:0)+'</td><td>'+money(h.acb)+'</td>'+
-        '<td>'+money(c.priceNat)+dayHtml+'</td><td><b>'+money(c.mv)+'</b></td>'+
-        '<td class="'+cls+'">'+(c.gain>=0?'+':'')+money(c.gain)+'</td><td class="'+cls+'">'+(c.gain>=0?'+':'')+c.pct.toFixed(1)+'%</td></tr>';
+      const dayHtml = c.day==null?'':'<span class="'+(c.day>=0?'up':'dn')+'">'+(c.day>=0?'+':'')+c.day.toFixed(2)+'%</span>';
+      html += '<div class="holdrow'+(c.live?'':' stale')+'">'+
+        '<div class="hd-line1"><span class="hd-name">'+esc(h.name)+'<span class="sym">'+esc(h.y||h.gm||'')+(h.exch?' · '+esc(h.exch):'')+'</span></span>'+
+        '<span class="hd-value">'+money(c.mv)+'</span></div>'+
+        '<div class="hd-line2"><span class="hd-dim">'+esc(h.ccy)+' &middot; '+fmt(h.qty, h.qty%1?4:0)+' sh @ '+money(c.priceNat)+'</span>'+dayHtml+'</div>'+
+        '<div class="hd-line3"><span class="hd-dim">Book '+money(h.acb)+'</span>'+
+        '<span class="'+cls+'">'+(c.gain>=0?'+':'')+money(c.gain)+' ('+(c.gain>=0?'+':'')+c.pct.toFixed(1)+'%)</span></div>'+
+        '</div>';
     }
     for (const c of g.cash)
-      html += '<tr><td class="nm">Cash</td><td>'+esc(c.ccy)+'</td><td></td><td></td><td></td><td><b>'+money(c.amount)+'</b></td><td></td><td></td></tr>';
-    html += '</table></div></div>';
+      html += '<div class="holdrow"><div class="hd-line1"><span class="hd-name">Cash<span class="sym">'+esc(c.ccy)+'</span></span><span class="hd-value">'+money(c.amount)+'</span></div></div>';
+    html += '</div></div>';
   }
   html += '<div class="sum"><h2>Totals by account (native currency)</h2><table class="fit">';
   for (const t of natTotals)
     html += '<tr><td class="nm">'+esc(t.k)+'</td><td>'+Object.entries(t.byCcy).map(([c,v])=>c+' '+money(v)).join('<br>')+'</td><td><b>CA$ '+money(t.acctCAD)+'</b></td></tr>';
   html += '</table><div class="grand"><span>TOTAL (CAD)</span><span>CA$ '+money(grandCAD)+'</span></div>'+
     '<div style="color:var(--dim);font-size:11px;margin-top:6px">at USD/CAD '+f.USD.toFixed(4)+', JPY/CAD '+f.JPY.toFixed(5)+', GBP/CAD '+f.GBP.toFixed(4)+', HKD/CAD '+f.HKD.toFixed(4)+' · '+fxSrc+'</div></div>';
-  view().innerHTML = html + '<div id="movers"></div>';
-  updateMovers();
+  view().innerHTML = html;
 }
 
 function renderFirstRun(){
@@ -541,6 +638,509 @@ function renderFirstRun(){
     '<div style="margin-top:10px"><input type="file" accept=".json,application/json" onchange="importFile(this.files[0], true)"></div>'+
     '<p class="hint">You can also start empty and add holdings by hand on the Holdings tab.</p></div>';
   document.getElementById('status').textContent = 'No holdings loaded yet.';
+}
+
+function moverRow(m, cls){
+  return '<div class="moverrow2">'+
+    '<div class="mv-line1"><span class="mv-name">'+esc(m.name)+'<span class="sym">'+esc(m.sym)+'</span></span>'+
+    '<span class="mv-price">'+esc(m.ccy)+' '+money(m.price)+'</span></div>'+
+    '<div class="mv-line2"><span></span><span class="mv-chg '+cls+'">'+(m.chg>=0?'+':'')+'CA$ '+money(m.chg)+' &nbsp;('+(m.chg>=0?'+':'')+m.pct.toFixed(2)+'%)</span></div>'+
+    '</div>';
+}
+async function renderSnap(){
+  if (!HOLDINGS.length){ renderFirstRun(); return; }
+  const f = fx || STATIC_FX;
+  let totalChg = 0, prevGrand = 0, curGrand = 0, haveAnyLive = false;
+  const moverMap = new Map();
+  for (const h of HOLDINGS){
+    const q = getQ(h), c = rowCalc(h);
+    const mvCAD = c.mv*(f[h.ccy]||1);
+    curGrand += mvCAD;
+    if (q && q.prev){
+      haveAnyLive = true;
+      const cross = (f[h.qccy]||1)/(f[h.ccy]||1);
+      const prevPriceNat = q.prev * h.scale * cross;
+      const curPriceNat = q.p * h.scale * cross;
+      const dChgCAD = h.qty*(curPriceNat-prevPriceNat)*(f[h.ccy]||1);
+      const prevValCAD = h.qty*prevPriceNat*(f[h.ccy]||1);
+      totalChg += dChgCAD;
+      prevGrand += prevValCAD;
+      const key = h.y || h.gm || h.name;
+      if (!moverMap.has(key)) moverMap.set(key, {name:h.name, sym:h.y||h.gm||'', ccy:h.ccy, price:curPriceNat, chg:0, prevVal:0});
+      const m = moverMap.get(key);
+      m.chg += dChgCAD; m.prevVal += prevValCAD; m.price = curPriceNat; m.ccy = h.ccy;
+    } else {
+      prevGrand += mvCAD;
+    }
+  }
+  for (const c of CASH){ const v = c.amount*(f[c.ccy]||1); prevGrand += v; curGrand += v; }
+  const totalPct = prevGrand>0 ? totalChg/prevGrand*100 : 0;
+  const chgCls = totalChg>=0 ? 'up' : 'dn';
+  const movers = [...moverMap.values()].filter(m=>m.chg!==0).map(m=>({...m, pct: m.prevVal>0 ? m.chg/m.prevVal*100 : 0}));
+  const upsAmt   = [...movers].sort((a,b)=>b.chg-a.chg).filter(m=>m.chg>0).slice(0,5);
+  const downsAmt = [...movers].sort((a,b)=>a.chg-b.chg).filter(m=>m.chg<0).slice(0,5);
+  const upsPct   = [...movers].sort((a,b)=>b.pct-a.pct).filter(m=>m.pct>0).slice(0,5);
+  const downsPct = [...movers].sort((a,b)=>a.pct-b.pct).filter(m=>m.pct<0).slice(0,5);
+
+  const snaps = (await allSnaps()).filter(s=>s.slot==='CLOSE').sort((a,b)=>a.date<b.date?-1:(a.date>b.date?1:0)).slice(-10);
+  let barsHtml;
+  if (snaps.length){
+    const vals = snaps.map(s=>s.grandCAD);
+    const min = Math.min(...vals), max = Math.max(...vals), range = (max-min)||1;
+    barsHtml = '<div class="chartbox"><div class="barchart">'+snaps.map(s=>{
+      const pct = snaps.length>1 ? ((s.grandCAD-min)/range*80+15) : 50;
+      return '<div class="bwrap"><div class="bar" style="height:'+pct.toFixed(1)+'%" title="'+s.date+': CA$ '+money(s.grandCAD)+'"></div>'+
+        '<div class="blabel">'+esc(s.date.slice(5))+'</div></div>';
+    }).join('')+'</div></div>';
+  } else {
+    barsHtml = '<p class="hint">No CLOSE snapshots yet — check back after the app captures a market close.</p>';
+  }
+
+  let html = '<div class="card"><h2>Change since last close</h2>'+
+    '<div class="netchg '+chgCls+'">'+(totalChg>=0?'+':'')+'CA$ '+money(totalChg)+'<span class="pct">'+(totalChg>=0?'+':'')+totalPct.toFixed(2)+'%</span></div>'+
+    '<div class="totval">Total portfolio: '+(curGrand/100000).toFixed(1)+' <span>&times;100K CAD (CA$ '+money(curGrand)+')</span></div>'+
+    '<p class="hint">'+(haveAnyLive?'Live holdings vs. their previous close.':'No live quotes yet — tap Refresh above.')+'</p></div>';
+  html += '<div class="card"><h2>Top movers &mdash; by dollar amount</h2><div class="moverlist">'+
+    '<div class="mv-sub">Gainers</div>'+
+    (upsAmt.length ? upsAmt.map(m=>moverRow(m,'up')).join('') : '<p class="hint">No gainers</p>')+
+    '<div class="mv-sub">Decliners</div>'+
+    (downsAmt.length ? downsAmt.map(m=>moverRow(m,'dn')).join('') : '<p class="hint">No decliners</p>')+
+    '</div></div>';
+  html += '<div class="card"><h2>Top movers &mdash; by percent change</h2><div class="moverlist">'+
+    '<div class="mv-sub">Gainers</div>'+
+    (upsPct.length ? upsPct.map(m=>moverRow(m,'up')).join('') : '<p class="hint">No gainers</p>')+
+    '<div class="mv-sub">Decliners</div>'+
+    (downsPct.length ? downsPct.map(m=>moverRow(m,'dn')).join('') : '<p class="hint">No decliners</p>')+
+    '</div></div>';
+  html += '<div class="card"><h2>Value at close &mdash; last '+snaps.length+' trading day'+(snaps.length===1?'':'s')+'</h2>'+barsHtml+'</div>';
+  view().innerHTML = html;
+}
+
+/* ---------------- summary (sector/class/currency/account allocation) ---------------- */
+const SECTOR_LIST = ['Technology','Financials','Healthcare','Energy','Industrials','Consumer Discretionary','Consumer Staples','Materials','Utilities','Real Estate','Communication Services','Fund/Diversified','Cash & Other'];
+const SECTOR_MAP = {
+  AAPL:'Technology', MSFT:'Technology', NVDA:'Technology', AMD:'Technology', INTC:'Technology', AVGO:'Technology',
+  ORCL:'Technology', CRM:'Technology', ADBE:'Technology', IBM:'Technology', CSCO:'Technology', QCOM:'Technology',
+  TXN:'Technology', MU:'Technology', PLTR:'Technology', 'SHOP.TO':'Technology', 'CSU.TO':'Technology',
+  GOOG:'Communication Services', GOOGL:'Communication Services', META:'Communication Services', NFLX:'Communication Services',
+  DIS:'Communication Services', CMCSA:'Communication Services', T:'Communication Services', VZ:'Communication Services',
+  'BCE.TO':'Communication Services', 'RCI-B.TO':'Communication Services',
+  AMZN:'Consumer Discretionary', TSLA:'Consumer Discretionary', HD:'Consumer Discretionary', MCD:'Consumer Discretionary',
+  NKE:'Consumer Discretionary', SBUX:'Consumer Discretionary', LOW:'Consumer Discretionary', TGT:'Consumer Discretionary', BKNG:'Consumer Discretionary',
+  JPM:'Financials', BAC:'Financials', WFC:'Financials', C:'Financials', GS:'Financials', MS:'Financials',
+  V:'Financials', MA:'Financials', AXP:'Financials', BLK:'Financials', SCHW:'Financials',
+  'RY.TO':'Financials', 'TD.TO':'Financials', 'BNS.TO':'Financials', 'BMO.TO':'Financials', 'CM.TO':'Financials',
+  XOM:'Energy', CVX:'Energy', COP:'Energy', SLB:'Energy', OXY:'Energy', PSX:'Energy',
+  'ENB.TO':'Energy', 'SU.TO':'Energy', 'CNQ.TO':'Energy', 'TRP.TO':'Energy',
+  JNJ:'Healthcare', PFE:'Healthcare', UNH:'Healthcare', ABBV:'Healthcare', MRK:'Healthcare', LLY:'Healthcare',
+  TMO:'Healthcare', ABT:'Healthcare', CVS:'Healthcare', MDT:'Healthcare',
+  PG:'Consumer Staples', KO:'Consumer Staples', PEP:'Consumer Staples', WMT:'Consumer Staples', COST:'Consumer Staples',
+  MDLZ:'Consumer Staples', CL:'Consumer Staples',
+  BA:'Industrials', CAT:'Industrials', HON:'Industrials', UPS:'Industrials', GE:'Industrials', MMM:'Industrials',
+  LMT:'Industrials', RTX:'Industrials', DE:'Industrials', 'CNR.TO':'Industrials', 'CP.TO':'Industrials',
+  LIN:'Materials', SHW:'Materials', ECL:'Materials', NEM:'Materials', FCX:'Materials', 'ABX.TO':'Materials', 'NTR.TO':'Materials',
+  NEE:'Utilities', DUK:'Utilities', SO:'Utilities', D:'Utilities', AEP:'Utilities',
+  AMT:'Real Estate', PLD:'Real Estate', SPG:'Real Estate', EQIX:'Real Estate', O:'Real Estate'
+};
+function sectorOf(h){
+  if (h.sector) return h.sector;
+  if (h.cls==='Fund' || h.cls==='ETF') return 'Fund/Diversified';
+  return SECTOR_MAP[h.y||''] || 'Unclassified';
+}
+const BREAKDOWN_PALETTE = ['#00d4ff','#ff6b6b','#ffd93d','#51e58f','#c77dff','#ff9f43','#4dd0e1','#f368a6'];
+const NEUTRAL_LABELS = ['Unclassified','Other','Cash & Other','Cash'];
+function computeBreakdown(mode){
+  const f = fx || STATIC_FX;
+  const map = new Map();
+  const add = (label, v) => map.set(label, (map.get(label)||0)+v);
+  for (const h of HOLDINGS){
+    const v = rowCalc(h).mv*(f[h.ccy]||1);
+    add(mode==='sector'?sectorOf(h): mode==='class'?(h.cls||'Equity'): mode==='ccy'?h.ccy: acctKey(h), v);
+  }
+  for (const c of CASH){
+    const v = c.amount*(f[c.ccy]||1);
+    add(mode==='sector'?'Cash & Other': mode==='class'?'Cash': mode==='ccy'?c.ccy: acctKey(c), v);
+  }
+  const total = [...map.values()].reduce((a,b)=>a+b,0);
+  let arr = [...map.entries()].map(([label,value])=>({label,value,pct: total>0?value/total*100:0}));
+  arr.sort((a,b)=>b.value-a.value);
+  const MAX = 8;
+  if (arr.length > MAX){
+    const head = arr.slice(0,MAX-1), tail = arr.slice(MAX-1);
+    const ov = tail.reduce((a,x)=>a+x.value,0);
+    head.push({label:'Other', value:ov, pct: total>0?ov/total*100:0});
+    arr = head;
+  }
+  let idx = 0;
+  arr = arr.map(s=>{
+    const neutral = NEUTRAL_LABELS.includes(s.label);
+    const color = neutral ? '#5d6675' : BREAKDOWN_PALETTE[idx % BREAKDOWN_PALETTE.length];
+    if (!neutral) idx++;
+    return {...s, color};
+  });
+  return {arr, total};
+}
+let sumGroup = localStorage.getItem('pt_summary_group') || 'sector';
+function setSumGroup(g){ sumGroup = g; localStorage.setItem('pt_summary_group', g); renderSummary(); }
+function renderSummary(){
+  if (!HOLDINGS.length){ renderFirstRun(); return; }
+  const GROUPS = [['sector','Sector'],['class','Class'],['ccy','Currency'],['account','Account']];
+  const {arr, total} = computeBreakdown(sumGroup);
+  let html = '<div class="card"><h2>Allocation</h2>'+
+    '<div class="grouptoggle">'+GROUPS.map(([k,lbl])=>'<button class="sm'+(sumGroup===k?'':' ghost')+'" onclick="setSumGroup(\''+k+'\')">'+lbl+'</button>').join('')+'</div>';
+  if (!total){
+    html += '<p class="hint">No live values yet — tap Refresh above.</p></div>';
+  } else {
+    let acc = 0;
+    const stops = arr.map(s=>{
+      const start=acc, end=acc+s.pct; acc=end;
+      return s.color+' '+start.toFixed(2)+'% '+end.toFixed(2)+'%';
+    }).join(', ');
+    html += '<div class="chartbox"><div class="pie-wrap"><div class="pie" style="background:conic-gradient('+stops+')"></div>'+
+      '<div class="pie-hole"><b>CA$ '+(total/100000).toFixed(1)+'</b><span>&times;100K total</span></div></div></div>'+
+      '<p class="hint">Values below are in CA$100K increments (e.g. 3.5 = CA$350,000).</p>'+
+      '<div class="legend2">'+arr.map(s=>
+        '<div class="lrow"><span class="swatch" style="background:'+s.color+'"></span>'+
+        '<span class="llabel">'+esc(s.label)+'</span>'+
+        '<span class="lval">'+(s.value/100000).toFixed(1)+' / '+s.pct.toFixed(0)+'%</span></div>'
+      ).join('')+'</div></div>';
+  }
+  if (sumGroup==='sector'){
+    const n = HOLDINGS.filter(h=>!h.sector && h.cls!=='Fund' && h.cls!=='ETF' && !SECTOR_MAP[h.y||'']).length;
+    if (n>0) html += '<div class="card"><p class="hint">'+n+' equity holding'+(n===1?'':'s')+' unclassified — tag them via Holdings &rarr; Edit &rarr; Sector.</p></div>';
+  }
+  view().innerHTML = html;
+}
+
+/* ---------------- tax (corporate accounts — estimated capital gains tax on a hypothetical sale) ---------------- */
+/* Estimates only — not tax advice. Rates are 2026 published CRA/EY figures for Ontario-resident CCPCs.
+   Confirm with your accountant before acting on these numbers. */
+const TAX_CORP_ENTITIES = ['SAJE','SCMPC','AGMPC'];
+const TAX_INCLUSION = 0.5;      // capital gains inclusion rate (50%, confirmed unchanged for 2026)
+const TAX_CORP_RATE = 0.5017;   // combined federal+Ontario CCPC tax rate on aggregate investment income (2026)
+const TAX_REFUNDABLE = 0.3067;  // portion of the above added to NERDTOH, refundable at 38.33% of taxable dividends paid
+function computeCorpTax(entityName){
+  const f = fx || STATIC_FX;
+  const rows = HOLDINGS.filter(h=>(h.entity||'').trim().toUpperCase() === entityName.toUpperCase());
+  let acb = 0, fmv = 0;
+  const detail = rows.map(h=>{
+    const c = rowCalc(h);
+    const rate = f[h.ccy]||1;
+    const hACB = h.acb*rate, hFMV = c.mv*rate;
+    acb += hACB; fmv += hFMV;
+    return {name:h.name, sym:h.y||h.gm||'', ccy:h.ccy, acb:hACB, fmv:hFMV, gain:hFMV-hACB};
+  });
+  detail.sort((a,b)=>b.fmv-a.fmv);
+  const netGain = fmv - acb;
+  const taxableGain = netGain * TAX_INCLUSION;
+  const taxOwed = netGain>0 ? taxableGain*TAX_CORP_RATE : 0;
+  const refundable = netGain>0 ? taxableGain*TAX_REFUNDABLE : 0;
+  const netTaxCost = taxOwed - refundable;
+  const netProceeds = fmv - taxOwed;
+  const cda = netGain * (1-TAX_INCLUSION); // non-taxable half added to (or, if a loss, subtracted from) Capital Dividend Account
+  return {entity:entityName, rows:detail, acb, fmv, netGain, taxableGain, taxOwed, refundable, netTaxCost, netProceeds, cda};
+}
+function renderTax(){
+  if (!HOLDINGS.length){ renderFirstRun(); return; }
+  const present = TAX_CORP_ENTITIES.filter(e=>HOLDINGS.some(h=>(h.entity||'').trim().toUpperCase()===e.toUpperCase()));
+  if (!present.length){
+    view().innerHTML = '<div class="card"><h2>Tax — corporate accounts</h2>'+
+      '<p class="hint">No holdings found with owner/entity set to SAJE, SCMPC or AGMPC. Set the "Owner / entity" field on Holdings &rarr; Edit to one of these to include a position here.</p></div>';
+    return;
+  }
+  const results = present.map(computeCorpTax);
+  let html = '<div class="card"><h2>Tax — corporate accounts</h2>'+
+    '<p class="hint">Estimated capital-gains tax owed on a hypothetical full sale today, for corporate accounts only (SAJE, SCMPC, AGMPC). '+
+    'Assumes Ontario-resident CCPC, 2026 combined federal+provincial investment-income rate of '+(TAX_CORP_RATE*100).toFixed(2)+'%, '+
+    (TAX_INCLUSION*100).toFixed(0)+'% capital gains inclusion rate, and '+(TAX_REFUNDABLE*100).toFixed(2)+'% added to the refundable dividend tax on hand (NERDTOH) account. '+
+    'Estimate only — not tax advice; confirm with your accountant.</p></div>';
+
+  html += '<div class="card"><h2>Summary by account</h2><div class="twrap"><table class="fit">'+
+    '<tr><th>Account</th><th>ACB</th><th>FMV</th><th>Net gain</th><th>Taxable gain</th><th>Tax owed</th><th>RDTOH refundable</th><th>Net tax cost</th><th>Net proceeds</th><th>CDA addition</th></tr>';
+  let tACB=0,tFMV=0,tGain=0,tTaxable=0,tTax=0,tRef=0,tNetCost=0,tProc=0,tCDA=0;
+  for (const r of results){
+    tACB+=r.acb; tFMV+=r.fmv; tGain+=r.netGain; tTaxable+=r.taxableGain; tTax+=r.taxOwed; tRef+=r.refundable; tNetCost+=r.netTaxCost; tProc+=r.netProceeds; tCDA+=r.cda;
+    const gcls = r.netGain>=0?'up':'dn', ccls = r.cda>=0?'up':'dn';
+    html += '<tr><td class="nm"><b>'+esc(r.entity)+'</b></td><td>'+money(r.acb)+'</td><td>'+money(r.fmv)+'</td>'+
+      '<td class="'+gcls+'">'+(r.netGain>=0?'+':'')+money(r.netGain)+'</td><td>'+money(r.taxableGain)+'</td>'+
+      '<td>'+money(r.taxOwed)+'</td><td>'+money(r.refundable)+'</td><td>'+money(r.netTaxCost)+'</td>'+
+      '<td><b>'+money(r.netProceeds)+'</b></td><td class="'+ccls+'">'+(r.cda>=0?'+':'')+money(r.cda)+'</td></tr>';
+  }
+  const tgcls = tGain>=0?'up':'dn', tccls = tCDA>=0?'up':'dn';
+  html += '<tr><td class="nm"><b>All corporate accounts</b></td><td><b>'+money(tACB)+'</b></td><td><b>'+money(tFMV)+'</b></td>'+
+    '<td class="'+tgcls+'"><b>'+(tGain>=0?'+':'')+money(tGain)+'</b></td><td><b>'+money(tTaxable)+'</b></td>'+
+    '<td><b>'+money(tTax)+'</b></td><td><b>'+money(tRef)+'</b></td><td><b>'+money(tNetCost)+'</b></td>'+
+    '<td><b>'+money(tProc)+'</b></td><td class="'+tccls+'"><b>'+(tCDA>=0?'+':'')+money(tCDA)+'</b></td></tr>';
+  html += '</table></div><p class="hint">All values in CA$. "Tax owed" is the gross corporate tax payable on sale; "RDTOH refundable" is the portion recoverable later when taxable dividends are paid out; "Net tax cost" is tax owed minus that refund. "CDA addition" is the non-taxable half of the gain (or, if a loss, the reduction), payable to shareholders as a tax-free capital dividend.</p></div>';
+
+  for (const r of results){
+    html += '<div class="card"><h2>'+esc(r.entity)+' &mdash; holdings detail</h2><div class="twrap"><table class="fit">'+
+      '<tr><th>Security</th><th>Ccy</th><th>ACB</th><th>FMV</th><th>Gain</th></tr>';
+    for (const d of r.rows){
+      const cls = d.gain>=0?'up':'dn';
+      html += '<tr><td class="nm">'+esc(d.name)+'<br><span class="sym">'+esc(d.sym)+'</span></td><td>'+esc(d.ccy)+'</td>'+
+        '<td>'+money(d.acb)+'</td><td>'+money(d.fmv)+'</td><td class="'+cls+'">'+(d.gain>=0?'+':'')+money(d.gain)+'</td></tr>';
+    }
+    html += '</table></div></div>';
+  }
+  view().innerHTML = html;
+}
+
+/* ---------------- dividends (calendar, absolute + after-tax for corp accounts, preferred-share income) ---------------- */
+/* Estimates only — not tax advice. Canadian eligible/non-eligible dividends: Part IV tax (38.33%), fully refundable via RDTOH
+   when the corp itself pays a dividend — shown as immediate cash impact, net long-run cost ~0.
+   Foreign dividends: taxed as aggregate investment income at the same combined rate used on the Tax tab, with foreign
+   withholding tax (default 15% treaty rate) assumed fully creditable against that Canadian tax. ROC is untaxed (reduces ACB,
+   not tracked here). Confirm all of this with your accountant before acting. */
+const DIV_CACHE_KEY = 'pt_div_cache';
+let DIVCACHE = {};
+try{ DIVCACHE = JSON.parse(localStorage.getItem(DIV_CACHE_KEY)) || {}; }catch(e){}
+function saveDivCache(){ try{ localStorage.setItem(DIV_CACHE_KEY, JSON.stringify(DIVCACHE)); }catch(e){} }
+const DIV_FREQ_DAYS = {Monthly:30, Quarterly:91, 'Semi-Annual':182, Annual:365};
+function divEventsParse(t){
+  const i = t.search(/\{"chart"/); if (i<0) return null;
+  try{
+    const res = JSON.parse(t.slice(i)).chart.result[0];
+    const divs = res.events && res.events.dividends;
+    if (!divs) return [];
+    return Object.values(divs).map(d=>({date:new Date(d.date*1000).toISOString().slice(0,10), amount:d.amount})).sort((a,b)=>a.date<b.date?-1:1);
+  }catch(e){ return null; }
+}
+function deriveDivStats(events){
+  if (!events || events.length<1) return null;
+  const last = events[events.length-1];
+  let freq = 'Irregular', intervalDays = null;
+  if (events.length>=2){
+    const diffs = [];
+    for (let k=1;k<events.length;k++) diffs.push((new Date(events[k].date)-new Date(events[k-1].date))/86400000);
+    diffs.sort((a,b)=>a-b);
+    const median = diffs[Math.floor(diffs.length/2)];
+    let best='Irregular', bestDiff=Infinity;
+    for (const [f,d] of Object.entries(DIV_FREQ_DAYS)){
+      const diff = Math.abs(median-d);
+      if (diff<bestDiff){ bestDiff=diff; best=f; }
+    }
+    if (bestDiff < 20) { freq = best; intervalDays = DIV_FREQ_DAYS[best]; }
+  }
+  const paymentsPerYear = intervalDays ? Math.round(365/intervalDays) : 1;
+  const annualRate = freq==='Irregular' ? events.filter(e=>new Date(e.date) > new Date(Date.now()-365*86400000)).reduce((a,e)=>a+e.amount,0) || last.amount
+                                         : last.amount*paymentsPerYear;
+  let nextDate = new Date(last.date);
+  if (intervalDays){ while (nextDate <= new Date()) nextDate = new Date(nextDate.getTime()+intervalDays*86400000); }
+  return {lastAmount:last.amount, freq, annualRate, nextDate: intervalDays ? nextDate.toISOString().slice(0,10) : null, fetchedAt: Date.now()};
+}
+async function refreshDivData(){
+  const targets = [...new Set(HOLDINGS.filter(h=>h.y && !(h.divRate>0)).map(h=>h.y))];
+  if (!targets.length){ document.getElementById('status').textContent = 'No symbols need auto-fetch (all set manually, or none have a Yahoo symbol).'; return; }
+  const st = document.getElementById('status');
+  let done = 0;
+  for (const sym of targets){
+    const cached = DIVCACHE[sym];
+    if (cached && (Date.now()-cached.fetchedAt) < 20*24*60*60*1000){ done++; continue; }
+    st.textContent = 'Fetching dividend history '+(done+1)+'/'+targets.length+': '+sym+'…';
+    const events = await fetchVia('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(sym)+'?range=2y&interval=1mo&events=div', divEventsParse);
+    const stats = deriveDivStats(events);
+    DIVCACHE[sym] = stats || {freq:'None', annualRate:0, fetchedAt:Date.now()};
+    done++;
+    await sleep(120);
+  }
+  saveDivCache();
+  st.textContent = 'Dividend history updated for '+targets.length+' symbol'+(targets.length===1?'':'s')+'.';
+  if (tab==='div') renderDividends();
+}
+function computeDivForHolding(h){
+  if (h.divRate>0){
+    const freq = h.divFreq || 'Quarterly';
+    return {rate:h.divRate, freq, nextDate:h.divNext||null, source:'manual'};
+  }
+  const c = h.y && DIVCACHE[h.y];
+  if (c && c.annualRate>0) return {rate:c.annualRate, freq:c.freq, nextDate:c.nextDate, source:'auto'};
+  return {rate:0, freq:'None', nextDate:null, source:'none'};
+}
+function divTaxCalc(grossCAD, divType, whtPct){
+  if (divType==='CDN-Eligible' || divType==='CDN-NonEligible'){
+    const taxOwed = grossCAD*0.3833;
+    return {taxOwed, refundable:taxOwed, netTaxCost:0, afterTax:grossCAD-taxOwed, whtAmt:0, note:'Part IV tax (fully refundable via RDTOH)'};
+  }
+  if (divType==='Foreign'){
+    const wht = (whtPct==null||whtPct==='') ? 15 : whtPct;
+    const whtAmt = grossCAD*(wht/100);
+    const taxOwed = grossCAD*TAX_CORP_RATE;
+    const refundable = grossCAD*TAX_REFUNDABLE;
+    return {taxOwed, refundable, netTaxCost:taxOwed-refundable, afterTax:grossCAD-taxOwed, whtAmt, note:'AII rate; '+wht+'% foreign WHT assumed creditable'};
+  }
+  if (divType==='ROC'){
+    return {taxOwed:0, refundable:0, netTaxCost:0, afterTax:grossCAD, whtAmt:0, note:'Return of capital — untaxed, reduces ACB (not auto-adjusted here)'};
+  }
+  return {taxOwed:null, refundable:null, netTaxCost:null, afterTax:null, whtAmt:0, note:'Unclassified — set Dividend type on Holdings → Edit'};
+}
+function renderDividends(){
+  if (!HOLDINGS.length){ renderFirstRun(); return; }
+  const f = fx || STATIC_FX;
+  const paying = HOLDINGS.map(h=>({h, d:computeDivForHolding(h)})).filter(x=>x.d.rate>0);
+  const isCorp = h => TAX_CORP_ENTITIES.some(e=>(h.entity||'').trim().toUpperCase()===e.toUpperCase());
+
+  let html = '<div class="card"><h2>Dividends &amp; distributions</h2>'+
+    '<p class="hint">Absolute (gross) income for all holdings; estimated after-tax income for corporate accounts (SAJE, SCMPC, AGMPC) only. '+
+    'Rates/dates are either manually entered (Holdings &rarr; Edit) or auto-derived from trailing Yahoo dividend history when available — projected forward, not guaranteed. Estimate only, not tax advice.</p>'+
+    '<div class="bar"><button class="sm" onclick="refreshDivData()">Fetch / update dividend history</button></div></div>';
+
+  if (!paying.length){
+    html += '<div class="card"><p class="hint">No dividend data yet. Tap "Fetch / update dividend history" to pull trailing history for holdings with a Yahoo symbol, or set a Distribution rate manually on Holdings &rarr; Edit (recommended for preferred shares, which are rarely covered by free data feeds).</p></div>';
+    view().innerHTML = html;
+    return;
+  }
+
+  // annual income summary by account
+  const byAccount = new Map();
+  for (const {h,d} of paying){
+    const k = acctKey(h);
+    const annualGrossCAD = h.qty*d.rate*(f[h.ccy]||1);
+    const corp = isCorp(h);
+    const tx = corp ? divTaxCalc(annualGrossCAD, h.divType, h.divWHT) : null;
+    if (!byAccount.has(k)) byAccount.set(k, {gross:0, afterTax:0, corp, hasUnclassified:false});
+    const a = byAccount.get(k);
+    a.gross += annualGrossCAD;
+    if (corp){ a.afterTax += (tx.afterTax==null ? annualGrossCAD : tx.afterTax); if (tx.afterTax==null) a.hasUnclassified=true; }
+  }
+  html += '<div class="card"><h2>Annual income by account (run-rate)</h2><div class="twrap"><table class="fit">'+
+    '<tr><th>Account</th><th>Gross / yr</th><th>After-tax / yr</th></tr>';
+  let sumGross=0, sumAfter=0;
+  for (const [k,a] of byAccount){
+    sumGross += a.gross; sumAfter += a.corp ? a.afterTax : a.gross;
+    html += '<tr><td class="nm">'+esc(k)+'</td><td>'+money(a.gross)+'</td><td>'+(a.corp ? money(a.afterTax)+(a.hasUnclassified?' *':'') : '<span class="hint">— (personal)</span>')+'</td></tr>';
+  }
+  html += '<tr><td class="nm"><b>Total</b></td><td><b>'+money(sumGross)+'</b></td><td><b>'+money(sumAfter)+'</b></td></tr>';
+  html += '</table></div><p class="hint">* includes holdings with no Dividend type set — shown at gross, not tax-adjusted. After-tax only computed for corporate accounts.</p></div>';
+
+  // preferred share subtotal
+  const prefs = paying.filter(x=>x.h.cls==='Preferred');
+  if (prefs.length){
+    let pGross=0, pAfter=0;
+    for (const {h,d} of prefs){
+      const annualGrossCAD = h.qty*d.rate*(f[h.ccy]||1);
+      pGross += annualGrossCAD;
+      pAfter += isCorp(h) ? (divTaxCalc(annualGrossCAD, h.divType, h.divWHT).afterTax ?? annualGrossCAD) : annualGrossCAD;
+    }
+    html += '<div class="card"><h2>Preferred share income</h2><p class="hint">'+prefs.length+' preferred holding'+(prefs.length===1?'':'s')+'.</p>'+
+      '<div class="twrap"><table class="fit"><tr><th>Security</th><th>Account</th><th>Rate/yr</th><th>Gross/yr</th></tr>'+
+      prefs.map(({h,d})=>{
+        const annualGrossCAD = h.qty*d.rate*(f[h.ccy]||1);
+        return '<tr><td class="nm">'+esc(h.name)+'<br><span class="sym">'+esc(h.y||h.gm||'')+'</span></td><td>'+esc(acctKey(h))+'</td>'+
+          '<td>'+esc(h.ccy)+' '+money(d.rate)+'</td><td>'+money(annualGrossCAD)+'</td></tr>';
+      }).join('')+
+      '</table></div><p class="hint">Gross '+money(pGross)+' / yr · After-tax (corp accounts only) '+money(pAfter)+' / yr</p></div>';
+  }
+
+  // month buckets: this calendar month + 11 more, grouped by entity (account)
+  const today = new Date();
+  const monthStart0 = new Date(today.getFullYear(), today.getMonth(), 1);
+  const months = [];
+  for (let i=0;i<12;i++){
+    const d = new Date(monthStart0.getFullYear(), monthStart0.getMonth()+i, 1);
+    months.push({
+      key: d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),
+      labelShort: d.toLocaleDateString('en-CA',{month:'short'}),
+      labelFull: d.toLocaleDateString('en-CA',{month:'long',year:'numeric'}),
+      start:d, end:new Date(d.getFullYear(), d.getMonth()+1, 1)
+    });
+  }
+  const rangeEnd = months[months.length-1].end;
+  const thisMonthKey = months[0].key;
+  const thisMonthEquity = new Map();
+  const monthlyByEntity = new Map();
+  for (const mo of months) monthlyByEntity.set(mo.key, new Map());
+  for (const {h,d} of paying){
+    const stepDays = DIV_FREQ_DAYS[d.freq];
+    if (!stepDays || !d.nextDate) continue;
+    let dt = new Date(d.nextDate);
+    let guard = 0;
+    while (dt < monthStart0 && guard<80){ dt = new Date(dt.getTime()+stepDays*86400000); guard++; }
+    const perPayNative = d.rate/(365/stepDays);
+    const corp = isCorp(h);
+    const entity = (h.entity||'').trim() || 'Other';
+    guard = 0;
+    while (dt < rangeEnd && guard<60){
+      const monthKey = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');
+      const grossCAD = h.qty*perPayNative*(f[h.ccy]||1);
+      const tx = corp ? divTaxCalc(grossCAD, h.divType, h.divWHT) : null;
+      const afterTaxCAD = corp ? (tx.afterTax==null?grossCAD:tx.afterTax) : grossCAD;
+      const atMap = monthlyByEntity.get(monthKey);
+      if (atMap){
+        if (!atMap.has(entity)) atMap.set(entity, {gross:0, afterTax:0});
+        const e = atMap.get(entity);
+        e.gross += grossCAD; e.afterTax += afterTaxCAD;
+      }
+      if (monthKey===thisMonthKey){
+        const key = h.y||h.gm||h.name;
+        if (!thisMonthEquity.has(key)) thisMonthEquity.set(key, {name:h.name, sym:h.y||h.gm||'', gross:0, afterTax:0, hasCorp:false, hasUnclassified:false, accts:new Set()});
+        const eq = thisMonthEquity.get(key);
+        eq.gross += grossCAD; eq.accts.add(acctKey(h));
+        if (corp){ eq.hasCorp = true; eq.afterTax += afterTaxCAD; if (tx.afterTax==null) eq.hasUnclassified = true; }
+      }
+      dt = new Date(dt.getTime()+stepDays*86400000);
+      guard++;
+    }
+  }
+
+  // this month, combined per equity across accounts
+  const thisMonthList = [...thisMonthEquity.values()].sort((a,b)=>b.gross-a.gross);
+  html += '<div class="card"><h2>Expected this month &mdash; '+months[0].labelFull+'</h2>';
+  if (!thisMonthList.length){
+    html += '<p class="hint">No dividends/distributions expected this month based on current data.</p>';
+  } else {
+    html += '<div class="moverlist">'+thisMonthList.map(eq=>
+      '<div class="moverrow2"><div class="mv-line1"><span class="mv-name">'+esc(eq.name)+'<span class="sym">'+esc(eq.sym)+'</span></span>'+
+      '<span class="mv-price">'+money(eq.gross)+'</span></div>'+
+      '<div class="mv-line2"><span class="hd-dim">'+esc([...eq.accts].join(', '))+'</span>'+
+      (eq.hasCorp ? '<span>'+money(eq.afterTax)+(eq.hasUnclassified?' *':'')+' after-tax</span>' : '<span class="hint">&mdash; personal</span>')+
+      '</div></div>'
+    ).join('')+'</div>';
+  }
+  html += '</div>';
+
+  // stacked bar chart by month, segmented by account/entity
+  const entityTotals = new Map();
+  for (const mo of months) for (const [e,v] of monthlyByEntity.get(mo.key)) entityTotals.set(e, (entityTotals.get(e)||0)+v.gross);
+  const sortedEntities = [...entityTotals.entries()].sort((a,b)=>b[1]-a[1]).map(([e])=>e);
+  const MAXE = 7;
+  const entityOrder = sortedEntities.slice(0,MAXE);
+  if (sortedEntities.length>MAXE) entityOrder.push('Other');
+  const entityColor = new Map(entityOrder.map((e,i)=>[e, BREAKDOWN_PALETTE[i%BREAKDOWN_PALETTE.length]]));
+  const monthEntityValues = (monthKey) => {
+    const atMap = monthlyByEntity.get(monthKey);
+    const out = new Map(entityOrder.map(e=>[e,0]));
+    for (const [e,v] of atMap){ const bucket = entityOrder.includes(e)?e:'Other'; out.set(bucket, (out.get(bucket)||0)+v.gross); }
+    return out;
+  };
+  const monthTotals = months.map(mo=>[...monthEntityValues(mo.key).values()].reduce((a,b)=>a+b,0));
+  const maxTotal = Math.max(...monthTotals, 1);
+  const stackHtml = '<div class="stackbar">'+months.map((mo,i)=>{
+    const vals = monthEntityValues(mo.key), total = monthTotals[i];
+    const wrapH = (total/maxTotal*100);
+    const segs = entityOrder.map(e=>{
+      const v = vals.get(e)||0;
+      if (!v || total<=0) return '';
+      return '<div class="seg" style="height:'+(v/total*100).toFixed(2)+'%;background:'+entityColor.get(e)+'" title="'+esc(e)+': CA$ '+money(v)+'"></div>';
+    }).join('');
+    return '<div class="swrap"><div class="stack" style="height:'+wrapH.toFixed(1)+'%" title="'+mo.labelFull+': CA$ '+money(total)+'">'+segs+'</div><div class="slabel">'+mo.labelShort+'</div></div>';
+  }).join('')+'</div>';
+  const legendHtml = '<div class="stacklegend">'+entityOrder.map(e=>{
+    const total = e==='Other' ? sortedEntities.filter(k=>!entityOrder.includes(k)).reduce((a,k)=>a+entityTotals.get(k),0) : entityTotals.get(e);
+    return '<div class="lg"><span class="sw" style="background:'+entityColor.get(e)+'"></span>'+esc(e)+' ('+money(total)+')</div>';
+  }).join('')+'</div>';
+  html += '<div class="card"><h2>Monthly dividend income by account (next 12 months)</h2><div class="chartbox">'+stackHtml+'</div>'+legendHtml+'</div>';
+
+  // monthly totals table
+  html += '<div class="card"><h2>Monthly totals</h2><div class="twrap"><table class="fit"><tr><th>Month</th><th>Gross</th><th>After-tax</th></tr>'+
+    months.map(mo=>{
+      let g=0, at=0;
+      for (const v of monthlyByEntity.get(mo.key).values()){ g+=v.gross; at+=v.afterTax; }
+      return '<tr><td class="nm">'+mo.labelFull+'</td><td>'+money(g)+'</td><td>'+money(at)+'</td></tr>';
+    }).join('')+
+    '</table></div><p class="hint">After-tax reflects corporate accounts only (SAJE, SCMPC, AGMPC); personal accounts are shown at gross. * = includes holdings with no Dividend type set.</p></div>';
+
+  view().innerHTML = html;
 }
 
 function dlist(id, vals){
@@ -569,37 +1169,53 @@ function delHold(i){
   if (!confirm('Delete "'+HOLDINGS[i].name+'"?')) return;
   HOLDINGS.splice(i,1); saveH(); renderHold();
 }
+const DIV_FREQ_LIST = ['','Monthly','Quarterly','Semi-Annual','Annual','Irregular'];
+const DIV_TYPE_LIST = ['','CDN-Eligible','CDN-NonEligible','Foreign','ROC'];
 function editHold(i){
-  const h = i>=0 ? HOLDINGS[i] : {entity:'',broker:'',account:'',atype:'Non-Reg',cls:'Equity',name:'',ccy:'CAD',qty:0,acb:0,y:'',gm:'',exch:'',qccy:'',scale:1,fp:0};
+  const h = i>=0 ? HOLDINGS[i] : {entity:'',broker:'',account:'',atype:'Non-Reg',cls:'Equity',name:'',ccy:'CAD',qty:0,acb:0,y:'',gm:'',exch:'',qccy:'',scale:1,fp:0,sector:'',divRate:0,divFreq:'',divNext:'',divType:'',divWHT:''};
   const F = (label,id,val,attrs,cls)=>'<div class="'+(cls||'')+'"><label>'+label+'</label><input id="f_'+id+'" value="'+esc(val)+'" '+(attrs||'')+'></div>';
+  const Sel = (label,id,val,opts,cls)=>'<div class="'+(cls||'')+'"><label>'+label+'</label><select id="f_'+id+'">'+opts.map(o=>'<option'+(val===o?' selected':'')+'>'+(o||'(none)')+'</option>').join('')+'</select></div>';
   document.getElementById('modal').innerHTML =
     '<div class="overlay"><div class="card"><h2>'+(i>=0?'Edit':'Add')+' holding</h2><div class="frm">'+
     F('Owner / entity','entity',h.entity,'list="dl_e"')+F('Broker','broker',h.broker,'list="dl_b"')+
     F('Account #','account',h.account,'list="dl_a"')+F('Account type','atype',h.atype,'list="dl_t"')+
     F('Security name','name',h.name,'','w2')+
-    '<div><label>Class</label><select id="f_cls">'+['Equity','ETF','Fund'].map(c=>'<option'+(h.cls===c?' selected':'')+'>'+c+'</option>').join('')+'</select></div>'+
+    '<div><label>Class</label><select id="f_cls">'+['Equity','Preferred','ETF','Fund'].map(c=>'<option'+(h.cls===c?' selected':'')+'>'+c+'</option>').join('')+'</select></div>'+
+    F('Sector (optional)','sector',h.sector||'','list="dl_sec"')+
     F('Holding currency','ccy',h.ccy,'list="dl_c"')+
     F('Shares / units','qty',h.qty,'type="number" step="any"')+F('Book cost (total)','acb',h.acb,'type="number" step="any"')+
     F('Yahoo symbol (e.g. CM.TO, AAPL)','y',h.y||'','','w2')+
     F('G&M fund code (if no Yahoo symbol)','gm',h.gm||'')+F('Exchange','exch',h.exch||'')+
     F('Quote currency (blank = same)','qccy',h.qccy||'')+F('Price scale (PSH.L = 0.01)','scale',h.scale==null?1:h.scale,'type="number" step="any"')+
     F('Fallback price (used if quote fails)','fp',h.fp||0,'type="number" step="any"','w2')+
+    F('Distribution rate ($/share/year, optional)','divRate',h.divRate||0,'type="number" step="any"')+
+    Sel('Distribution frequency','divFreq',h.divFreq||'',DIV_FREQ_LIST)+
+    F('Next pay date (optional, YYYY-MM-DD)','divNext',h.divNext||'','type="date"')+
+    Sel('Dividend type (for tax est.)','divType',h.divType||'',DIV_TYPE_LIST)+
+    F('Foreign withholding % (Foreign only, blank=15%)','divWHT',h.divWHT==null?'':h.divWHT,'type="number" step="any"','w2')+
     '</div><div class="rowbtns" style="margin-top:12px"><button class="ghost" onclick="closeModal()">Cancel</button><button onclick="saveHold('+i+')">Save</button></div>'+
     dlist('dl_e',HOLDINGS.map(x=>x.entity))+dlist('dl_b',HOLDINGS.map(x=>x.broker))+
     dlist('dl_a',HOLDINGS.map(x=>x.account))+dlist('dl_t',HOLDINGS.map(x=>x.atype).concat(['Non-Reg','TFSA','RRSP','RESP']))+
-    dlist('dl_c',['CAD','USD','JPY','GBP','HKD'])+
+    dlist('dl_c',['CAD','USD','JPY','GBP','HKD'])+dlist('dl_sec',SECTOR_LIST)+
     '</div></div>';
 }
 function closeModal(){ document.getElementById('modal').innerHTML=''; }
 function saveHold(i){
   const g = id=>document.getElementById('f_'+id).value.trim();
   const n = id=>parseFloat(document.getElementById('f_'+id).value)||0;
+  const sel = id=>document.getElementById('f_'+id).value;
   const h = {entity:g('entity'),broker:g('broker'),account:g('account'),atype:g('atype'),
     cls:document.getElementById('f_cls').value,name:g('name'),ccy:g('ccy')||'CAD',
     qty:n('qty'),acb:n('acb'),exch:g('exch'),scale:n('scale')||1,fp:n('fp')};
   if (g('y')) h.y = g('y');
   if (g('gm')) h.gm = g('gm');
+  if (g('sector')) h.sector = g('sector');
   h.qccy = g('qccy') || h.ccy;
+  if (n('divRate')) h.divRate = n('divRate');
+  if (sel('divFreq')) h.divFreq = sel('divFreq')==='(none)'?'':sel('divFreq');
+  if (g('divNext')) h.divNext = g('divNext');
+  if (sel('divType') && sel('divType')!=='(none)') h.divType = sel('divType');
+  if (g('divWHT')) h.divWHT = n('divWHT');
   if (!h.name){ alert('Name is required.'); return; }
   if (!h.y && !h.gm && !h.fp){ alert('Give a Yahoo symbol, a G&M fund code, or a fallback price.'); return; }
   if (i>=0) HOLDINGS[i] = h; else HOLDINGS.push(h);
@@ -642,10 +1258,27 @@ function addCash(){
   CASH.push(c); saveC(); renderCash();
 }
 
+function syncCard(){
+  if (syncOn()){
+    return '<div class="card"><h2>Cloud sync</h2>'+
+      '<p class="hint">Connected — holdings &amp; cash sync automatically via an encrypted private Gist (id '+esc(SYNC.gist.slice(0,10))+'&hellip;). Snapshot history stays local to this device.</p>'+
+      '<div class="bar"><button class="sm" onclick="uiSyncNow()">Sync now</button><button class="sm ghost" onclick="uiSyncOff()">Disconnect</button></div>'+
+      '<p class="hint" id="syncstat"></p></div>';
+  }
+  return '<div class="card"><h2>Cloud sync (encrypted)</h2>'+
+    '<p class="hint">Sync holdings &amp; cash between devices via a private GitHub Gist. Data is AES-256 encrypted client-side before upload — GitHub only ever sees ciphertext, not your holdings.</p>'+
+    '<div class="frm">'+
+    '<div class="w2"><label>GitHub token (classic, "gist" scope only)</label><input id="s_tok" type="password" placeholder="ghp_..."></div>'+
+    '<div class="w2"><label>Passphrase (make one up; needed to decrypt on every device)</label><input id="s_pass" type="password"></div>'+
+    '<div class="w2"><label>Existing Gist ID (leave blank on your FIRST device only)</label><input id="s_gist" placeholder="e.g. 9f8a3b2c1d..."></div>'+
+    '</div><div class="rowbtns" style="margin-top:10px"><button onclick="uiSyncSetup()">Connect / Create</button></div>'+
+    '<p class="hint">Create a token at <a href="https://github.com/settings/tokens/new?scopes=gist&description=portfolio-sync" target="_blank" style="color:var(--acc)">github.com/settings/tokens/new</a> — tick only the "gist" scope. On your first device leave Gist ID blank (one is created for you); copy the ID shown and enter it with the same passphrase on your other device.</p></div>';
+}
+
 async function renderData(){
   const snaps = (await allSnaps()).sort((a,b)=>a.id<b.id?1:-1);
   let html = '<div class="card"><h2>Snapshots ('+snaps.length+')</h2>'+
-    '<p class="hint">Auto-saved after 10:00 and after market close (16:15 ET) on weekdays, whenever the app is next open. Prices after close are the official closing prices, so an evening catch-up is exact.</p>'+
+    '<p class="hint">One snapshot auto-saves per weekday, at market close (16:15 ET or later), when the app is backgrounded or the tab/window is closed. Prices after close are the official closing prices, so an evening catch-up is exact.</p>'+
     '<div class="bar" style="margin-top:8px"><button class="sm" onclick="manualSnap()">Save snapshot now</button></div>'+
     '<div class="twrap"><table class="fit"><tr><th>Date</th><th>Slot</th><th>Captured</th><th>Live</th><th>Total CAD</th><th></th></tr>';
   for (const s of snaps.slice(0,30))
@@ -657,6 +1290,7 @@ async function renderData(){
     '<button class="sm" onclick="exportTotalsCSV()">CSV — account totals</button>'+
     '<button class="sm ghost" onclick="exportBackup()">Backup everything (JSON)</button></div>'+
     '<p class="hint">CSV files include one row per holding (or account) per snapshot date. Files go to your Downloads folder.</p></div>';
+  html += syncCard();
   html += '<div class="card"><h2>Import / restore</h2>'+
     '<p class="hint">Load a portfolio-data.json or a backup JSON. Holdings and cash are replaced; snapshots in a backup are merged in.</p>'+
     '<input type="file" accept=".json,application/json" onchange="importFile(this.files[0], true)"></div>';
@@ -677,8 +1311,14 @@ if (HOLDINGS.length){
   document.getElementById('status').textContent = 'Tap Refresh to load live prices.';
   refresh();
 }
-setInterval(checkAutoSnap, 60*1000);
-document.addEventListener('visibilitychange', ()=>{ if (!document.hidden) checkAutoSnap(); });
+if (syncOn()) syncPull(true).catch(e=>console.warn('sync pull failed', e));
+setInterval(()=>{ if (syncOn()) syncPull(true).catch(e=>console.warn('sync pull failed', e)); }, 5*60*1000);
+// One CLOSE snapshot per day, taken when the app is backgrounded or the tab/window is closed (not on refresh, not at 10am).
+document.addEventListener('visibilitychange', ()=>{
+  if (document.hidden){ checkAutoSnap(); }
+  else if (syncOn()) syncPull(true).catch(e=>console.warn('sync pull failed', e));
+});
+window.addEventListener('pagehide', ()=>{ checkAutoSnap(); });
 </script>
 </body>
 </html>
