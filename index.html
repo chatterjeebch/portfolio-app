@@ -467,7 +467,9 @@ function finnhubSym(sym){
 function loadNewsCache(){ try{ return JSON.parse(localStorage.getItem(LS_NEWS))||{}; }catch(e){ return {}; } }
 function saveNewsCache(c){ try{ localStorage.setItem(LS_NEWS, JSON.stringify(c)); }catch(e){} }
 function newsParse(t){
-  try{ const j = JSON.parse(t); return Array.isArray(j) ? j : null; }catch(e){ return null; }
+  const i = t.indexOf('['); // jina and some proxies prepend "Title:/URL:/---" text before the JSON body
+  if (i<0) return null;
+  try{ const j = JSON.parse(t.slice(i)); return Array.isArray(j) ? j : null; }catch(e){ return null; }
 }
 async function fetchNewsFor(sym){
   const to = torontoNow().date;
