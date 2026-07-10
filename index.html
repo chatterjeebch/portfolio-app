@@ -496,23 +496,28 @@ function splitNewsCache(symbols){
 // patches the results into any .mv-news-slot[data-sym=...] placeholders still in the DOM.
 async function loadMoverNewsAsync(symbols){
   const cache = loadNewsCache();
-  await Promise.all(symbols.map(async sym=>{
-    let items = [];
-    try{ items = await fetchNewsFor(sym); }catch(e){}
-    cache[sym] = {ts:Date.now(), items};
-    if (tab==='snap'){
-      document.querySelectorAll('.mv-news-slot[data-sym="'+sym.replace(/"/g,'')+'"]').forEach(slot=>{
-        if (items.length){
-          slot.outerHTML = '<ul class="mv-news">'+items.map(it=>
-            '<li><a href="'+esc(it.url)+'" target="_blank" rel="noopener">'+esc(it.headline)+'</a><span class="mv-news-src">— '+esc(it.source)+'</span></li>'
-          ).join('')+'</ul>';
-        } else {
-          slot.remove();
-        }
-      });
-    }
-  }));
-  saveNewsCache(cache);
+  const CH = 3; // small batches — firing all requests at once overwhelms the free jina proxy and most silently fail
+  for (let i=0; i<symbols.length; i+=CH){
+    const chunk = symbols.slice(i, i+CH);
+    await Promise.all(chunk.map(async sym=>{
+      let items = [];
+      try{ items = await fetchNewsFor(sym); }catch(e){}
+      cache[sym] = {ts:Date.now(), items};
+      if (tab==='snap'){
+        document.querySelectorAll('.mv-news-slot[data-sym="'+sym.replace(/"/g,'')+'"]').forEach(slot=>{
+          if (items.length){
+            slot.outerHTML = '<ul class="mv-news">'+items.map(it=>
+              '<li><a href="'+esc(it.url)+'" target="_blank" rel="noopener">'+esc(it.headline)+'</a><span class="mv-news-src">— '+esc(it.source)+'</span></li>'
+            ).join('')+'</ul>';
+          } else {
+            slot.remove();
+          }
+        });
+      }
+    }));
+    saveNewsCache(cache); // save progressively so partial progress isn't lost if the tab closes mid-fetch
+    if (i+CH < symbols.length) await sleep(500);
+  }
 }
 
 /* ---------------- snapshots ---------------- */
