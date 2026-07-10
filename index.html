@@ -76,6 +76,11 @@ textarea{font-family:monospace;font-size:12px}
 .mv-chg{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .mv-sub{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.3px;margin:10px 0 2px}
 .mv-sub:first-child{margin-top:0}
+.mv-news{list-style:disc;margin:4px 0 0 18px;padding:0}
+.mv-news li{font-size:11.5px;line-height:1.4;margin-bottom:3px}
+.mv-news a{color:var(--acc);text-decoration:none}
+.mv-news a:hover{text-decoration:underline}
+.mv-news-src{color:var(--dim);margin-left:4px}
 .barchart{display:flex;align-items:flex-end;gap:4px;height:90px;margin-top:10px}
 .barchart .bwrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
 .barchart .bar{width:100%;background:var(--acc);border-radius:3px 3px 0 0;min-height:2px}
@@ -145,6 +150,7 @@ textarea{font-family:monospace;font-size:12px}
 <div class="foot" id="foot">
 ° = live quote unavailable, showing fallback price.<br>
 Stock/ETF prices from Yahoo Finance (delayed up to 15&nbsp;min). Fund NAVs update once daily after close; some funds scraped from The Globe and Mail. FX from frankfurter.dev (ECB daily).<br>
+Mover headlines from Finnhub (company news API), cached up to 1&nbsp;hour.<br>
 One snapshot auto-saves per weekday, at market close (16:15 ET or later), when the app is backgrounded or closed.
 </div>
 <script>
@@ -449,6 +455,46 @@ function rowCalc(h){
 }
 const acctKey = x => x.entity+(x.broker?' · '+x.broker:'')+(x.account?' '+x.account:'')+' ('+(x.atype||'')+')';
 
+/* ---------------- mover news (Finnhub) ---------------- */
+const FINNHUB_KEY = 'd98ki41r01qugfuve01gd98ki41r01qugfuve020';
+const LS_NEWS = 'pt_news_cache';
+const NEWS_TTL_MS = 60*60*1000; // re-fetch headlines at most once per hour
+function finnhubSym(sym){
+  if (!sym) return null;
+  const s = sym.replace(/\.[A-Za-z]+$/, ''); // strip exchange suffix, e.g. CM.TO -> CM
+  return s || null;
+}
+function loadNewsCache(){ try{ return JSON.parse(localStorage.getItem(LS_NEWS))||{}; }catch(e){ return {}; } }
+function saveNewsCache(c){ try{ localStorage.setItem(LS_NEWS, JSON.stringify(c)); }catch(e){} }
+function newsParse(t){
+  try{ const j = JSON.parse(t); return Array.isArray(j) ? j : null; }catch(e){ return null; }
+}
+async function fetchNewsFor(sym){
+  const to = torontoNow().date;
+  const from = new Date(Date.now()-7*24*3600*1000).toISOString().slice(0,10);
+  const url = 'https://finnhub.io/api/v1/company-news?symbol='+encodeURIComponent(sym)+'&from='+from+'&to='+to+'&token='+FINNHUB_KEY;
+  const items = await fetchVia(url, newsParse);
+  if (!items || !items.length) return [];
+  return items.filter(x=>x.headline && x.url)
+    .sort((a,b)=>b.datetime-a.datetime)
+    .slice(0,2)
+    .map(x=>({headline:x.headline, source:x.source||'', url:x.url, dt:x.datetime}));
+}
+async function getNewsForSymbols(symbols){
+  const cache = loadNewsCache(), now = Date.now(), out = {};
+  let dirty = false;
+  for (const sym of symbols){
+    const hit = cache[sym];
+    if (hit && (now-hit.ts) < NEWS_TTL_MS){ out[sym] = hit.items; continue; }
+    out[sym] = await fetchNewsFor(sym);
+    cache[sym] = {ts:now, items:out[sym]};
+    dirty = true;
+    await sleep(150);
+  }
+  if (dirty) saveNewsCache(cache);
+  return out;
+}
+
 /* ---------------- snapshots ---------------- */
 function torontoNow(){
   const parts = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Toronto',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,weekday:'short'}).formatToParts(new Date());
@@ -640,12 +686,18 @@ function renderFirstRun(){
   document.getElementById('status').textContent = 'No holdings loaded yet.';
 }
 
-function moverRow(m, cls){
-  return '<div class="moverrow2">'+
+function moverRow(m, cls, news){
+  let html = '<div class="moverrow2">'+
     '<div class="mv-line1"><span class="mv-name">'+esc(m.name)+'<span class="sym">'+esc(m.sym)+'</span></span>'+
     '<span class="mv-price">'+esc(m.ccy)+' '+money(m.price)+'</span></div>'+
-    '<div class="mv-line2"><span></span><span class="mv-chg '+cls+'">'+(m.chg>=0?'+':'')+'CA$ '+money(m.chg)+' &nbsp;('+(m.chg>=0?'+':'')+m.pct.toFixed(2)+'%)</span></div>'+
-    '</div>';
+    '<div class="mv-line2"><span></span><span class="mv-chg '+cls+'">'+(m.chg>=0?'+':'')+'CA$ '+money(m.chg)+' &nbsp;('+(m.chg>=0?'+':'')+m.pct.toFixed(2)+'%)</span></div>';
+  if (news && news.length){
+    html += '<ul class="mv-news">'+news.map(it=>
+      '<li><a href="'+esc(it.url)+'" target="_blank" rel="noopener">'+esc(it.headline)+'</a><span class="mv-news-src">— '+esc(it.source)+'</span></li>'
+    ).join('')+'</ul>';
+  }
+  html += '</div>';
+  return html;
 }
 async function renderSnap(){
   if (!HOLDINGS.length){ renderFirstRun(); return; }
@@ -681,6 +733,8 @@ async function renderSnap(){
   const downsAmt = [...movers].sort((a,b)=>a.chg-b.chg).filter(m=>m.chg<0).slice(0,5);
   const upsPct   = [...movers].sort((a,b)=>b.pct-a.pct).filter(m=>m.pct>0).slice(0,5);
   const downsPct = [...movers].sort((a,b)=>a.pct-b.pct).filter(m=>m.pct<0).slice(0,5);
+  const moverSyms = [...new Set([...upsAmt,...downsAmt,...upsPct,...downsPct].map(m=>finnhubSym(m.sym)).filter(Boolean))];
+  const moverNews = moverSyms.length ? await getNewsForSymbols(moverSyms) : {};
 
   const snaps = (await allSnaps()).filter(s=>s.slot==='CLOSE').sort((a,b)=>a.date<b.date?-1:(a.date>b.date?1:0)).slice(-10);
   let barsHtml;
@@ -702,15 +756,15 @@ async function renderSnap(){
     '<p class="hint">'+(haveAnyLive?'Live holdings vs. their previous close.':'No live quotes yet — tap Refresh above.')+'</p></div>';
   html += '<div class="card"><h2>Top movers &mdash; by dollar amount</h2><div class="moverlist">'+
     '<div class="mv-sub">Gainers</div>'+
-    (upsAmt.length ? upsAmt.map(m=>moverRow(m,'up')).join('') : '<p class="hint">No gainers</p>')+
+    (upsAmt.length ? upsAmt.map(m=>moverRow(m,'up',moverNews[finnhubSym(m.sym)])).join('') : '<p class="hint">No gainers</p>')+
     '<div class="mv-sub">Decliners</div>'+
-    (downsAmt.length ? downsAmt.map(m=>moverRow(m,'dn')).join('') : '<p class="hint">No decliners</p>')+
+    (downsAmt.length ? downsAmt.map(m=>moverRow(m,'dn',moverNews[finnhubSym(m.sym)])).join('') : '<p class="hint">No decliners</p>')+
     '</div></div>';
   html += '<div class="card"><h2>Top movers &mdash; by percent change</h2><div class="moverlist">'+
     '<div class="mv-sub">Gainers</div>'+
-    (upsPct.length ? upsPct.map(m=>moverRow(m,'up')).join('') : '<p class="hint">No gainers</p>')+
+    (upsPct.length ? upsPct.map(m=>moverRow(m,'up',moverNews[finnhubSym(m.sym)])).join('') : '<p class="hint">No gainers</p>')+
     '<div class="mv-sub">Decliners</div>'+
-    (downsPct.length ? downsPct.map(m=>moverRow(m,'dn')).join('') : '<p class="hint">No decliners</p>')+
+    (downsPct.length ? downsPct.map(m=>moverRow(m,'dn',moverNews[finnhubSym(m.sym)])).join('') : '<p class="hint">No decliners</p>')+
     '</div></div>';
   html += '<div class="card"><h2>Value at close &mdash; last '+snaps.length+' trading day'+(snaps.length===1?'':'s')+'</h2>'+barsHtml+'</div>';
   view().innerHTML = html;
