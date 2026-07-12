@@ -8,6 +8,8 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>Portfolio Tracker</title>
+<!-- 2026-07-11: news relevance filter (max 2/holding), expanded sector map, 30-day dividend cache auto-refresh, corp dividend tax inference -->
+
 <style>
 :root{--bg:#0e1117;--card:#161b24;--card2:#1c2330;--txt:#e6e9ef;--dim:#8b93a3;--grn:#3fca6b;--red:#ff5d5d;--acc:#4ea1ff;--bord:#252d3d}
 @media (prefers-color-scheme: light){:root{--bg:#f4f6f9;--card:#ffffff;--card2:#eef1f6;--txt:#1a1f29;--dim:#5d6675;--grn:#0d8a3e;--red:#d3383f;--acc:#0b62c4;--bord:#dde3ec}}
@@ -457,12 +459,42 @@ const acctKey = x => x.entity+(x.broker?' · '+x.broker:'')+(x.account?' '+x.acc
 
 /* ---------------- mover news (Finnhub) ---------------- */
 const FINNHUB_KEY = 'd98ki41r01qugfuve01gd98ki41r01qugfuve020';
-const LS_NEWS = 'pt_news_cache';
+const LS_NEWS = 'pt_news_cache2'; // v2: cache now stores relevance-filtered items (old key abandoned)
 const NEWS_TTL_MS = 60*60*1000; // re-fetch headlines at most once per hour
+const NEWS_MAX_PER_HOLDING = 2;
 function finnhubSym(sym){
   if (!sym) return null;
   const s = sym.replace(/\.[A-Za-z]+$/, ''); // strip exchange suffix, e.g. CM.TO -> CM
   return s || null;
+}
+/* Relevance filter — Finnhub's company-news endpoint often returns broad-market articles,
+   and stripping ".TO" can hit an unrelated US ticker (CM.TO -> CM is Comerica, not CIBC).
+   Only keep articles whose headline/summary actually mentions the company name or its ticker. */
+const NAME_STOPWORDS = new Set(['inc','incorporated','corp','corporation','company','co','group','ltd','limited','plc','the','and','of','cl','class','a','b','c','holdings','holding','trust','sa','se','nv','ny','reg','adr','gdr','intl','international','new','us','usd','cad','listed','tokyo','hk','gb','index','etf','fund','shares','pref','ser']);
+function newsNameTokens(name){
+  return String(name||'')
+    .replace(/\([^)]*\)/g,' ')                 // drop "(TICKER)" parentheticals
+    .split(/[^A-Za-z0-9&.-]+/)
+    .map(w=>w.replace(/[.-]+$/,''))
+    .filter(w=>w.length>=3 && !NAME_STOPWORDS.has(w.toLowerCase()));
+}
+// words too generic to identify a company on their own ("Bank" alone would match any bank's news)
+const NAME_GENERIC = new Set(['bank','banks','financial','financials','american','airlines','air','national','general','united','international','global','first','capital','gold','power','electric','communications','communication','systems','platforms','entertainment','motor','motors','digital','pacific','group','energy','apartment','properties','technologies','technology','resources','industries','brands','foods','media','health','solutions','partners','line','lines','canadian','canada','imperial','commerce']);
+function newsRelevant(item, sym, name){
+  const text = ((item.headline||'')+' '+(item.summary||'')).toLowerCase();
+  const toks = newsNameTokens(name);
+  // two adjacent name words appearing together are distinctive even if each is generic ("american airlines")
+  if (toks.length>=2 && text.indexOf((toks[0]+' '+toks[1]).toLowerCase()) >= 0) return true;
+  for (const tok of toks){
+    const t = tok.toLowerCase();
+    if (!NAME_GENERIC.has(t) && text.indexOf(t) >= 0) return true;
+  }
+  // ticker match only for 2+ char symbols, on a word boundary (avoids "C" matching everything)
+  if (sym && sym.length>=2){
+    const re = new RegExp('(^|[^A-Za-z0-9])'+sym.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'([^A-Za-z0-9]|$)','i');
+    if (re.test((item.headline||'')+' '+(item.summary||''))) return true;
+  }
+  return false;
 }
 function loadNewsCache(){ try{ return JSON.parse(localStorage.getItem(LS_NEWS))||{}; }catch(e){ return {}; } }
 function saveNewsCache(c){ try{ localStorage.setItem(LS_NEWS, JSON.stringify(c)); }catch(e){} }
@@ -471,15 +503,15 @@ function newsParse(t){
   if (i<0) return null;
   try{ const j = JSON.parse(t.slice(i)); return Array.isArray(j) ? j : null; }catch(e){ return null; }
 }
-async function fetchNewsFor(sym){
+async function fetchNewsFor(sym, name){
   const to = torontoNow().date;
   const from = new Date(Date.now()-7*24*3600*1000).toISOString().slice(0,10);
   const url = 'https://finnhub.io/api/v1/company-news?symbol='+encodeURIComponent(sym)+'&from='+from+'&to='+to+'&token='+FINNHUB_KEY;
   const items = await fetchVia(url, newsParse, 9000); // short timeout — headlines are non-critical, never block the page on them
   if (!items || !items.length) return [];
-  return items.filter(x=>x.headline && x.url)
+  return items.filter(x=>x.headline && x.url && newsRelevant(x, sym, name))
     .sort((a,b)=>b.datetime-a.datetime)
-    .slice(0,2)
+    .slice(0,NEWS_MAX_PER_HOLDING)
     .map(x=>({headline:x.headline, source:x.source||'', url:x.url, dt:x.datetime}));
 }
 // Split symbols into ones we already have a fresh cached answer for vs. ones that need fetching.
@@ -494,14 +526,14 @@ function splitNewsCache(symbols){
 }
 // Fetches news for `symbols` in the background (in parallel, not awaited by the caller) and
 // patches the results into any .mv-news-slot[data-sym=...] placeholders still in the DOM.
-async function loadMoverNewsAsync(symbols){
+async function loadMoverNewsAsync(targets){ // targets: [{sym, name}]
   const cache = loadNewsCache();
   const CH = 3; // small batches — firing all requests at once overwhelms the free jina proxy and most silently fail
-  for (let i=0; i<symbols.length; i+=CH){
-    const chunk = symbols.slice(i, i+CH);
-    await Promise.all(chunk.map(async sym=>{
+  for (let i=0; i<targets.length; i+=CH){
+    const chunk = targets.slice(i, i+CH);
+    await Promise.all(chunk.map(async ({sym, name})=>{
       let items = [];
-      try{ items = await fetchNewsFor(sym); }catch(e){}
+      try{ items = await fetchNewsFor(sym, name); }catch(e){}
       cache[sym] = {ts:Date.now(), items};
       if (tab==='snap'){
         document.querySelectorAll('.mv-news-slot[data-sym="'+sym.replace(/"/g,'')+'"]').forEach(slot=>{
@@ -516,7 +548,7 @@ async function loadMoverNewsAsync(symbols){
       }
     }));
     saveNewsCache(cache); // save progressively so partial progress isn't lost if the tab closes mid-fetch
-    if (i+CH < symbols.length) await sleep(500);
+    if (i+CH < targets.length) await sleep(500);
   }
 }
 
@@ -760,8 +792,12 @@ async function renderSnap(){
   const downsAmt = [...movers].sort((a,b)=>a.chg-b.chg).filter(m=>m.chg<0).slice(0,5);
   const upsPct   = [...movers].sort((a,b)=>b.pct-a.pct).filter(m=>m.pct>0).slice(0,5);
   const downsPct = [...movers].sort((a,b)=>a.pct-b.pct).filter(m=>m.pct<0).slice(0,5);
-  const moverSyms = [...new Set([...upsAmt,...downsAmt,...upsPct,...downsPct].map(m=>finnhubSym(m.sym)).filter(Boolean))];
-  const {fresh: moverNews, stale: staleMoverSyms} = splitNewsCache(moverSyms);
+  const moverTargets = new Map(); // finnhub sym -> holding name (for the news relevance filter)
+  for (const m of [...upsAmt,...downsAmt,...upsPct,...downsPct]){
+    const s = finnhubSym(m.sym);
+    if (s && !moverTargets.has(s)) moverTargets.set(s, m.name);
+  }
+  const {fresh: moverNews, stale: staleMoverSyms} = splitNewsCache([...moverTargets.keys()]);
   const staleSet = new Set(staleMoverSyms);
 
   const snaps = (await allSnaps()).filter(s=>s.slot==='CLOSE').sort((a,b)=>a.date<b.date?-1:(a.date>b.date?1:0)).slice(-10);
@@ -797,7 +833,7 @@ async function renderSnap(){
     '</div></div>';
   html += '<div class="card"><h2>Value at close &mdash; last '+snaps.length+' trading day'+(snaps.length===1?'':'s')+'</h2>'+barsHtml+'</div>';
   view().innerHTML = html;
-  if (staleMoverSyms.length) loadMoverNewsAsync(staleMoverSyms); // fire-and-forget; never blocks the render
+  if (staleMoverSyms.length) loadMoverNewsAsync(staleMoverSyms.map(s=>({sym:s, name:moverTargets.get(s)||''}))); // fire-and-forget; never blocks the render
 }
 
 /* ---------------- summary (sector/class/currency/account allocation) ---------------- */
@@ -824,12 +860,50 @@ const SECTOR_MAP = {
   LMT:'Industrials', RTX:'Industrials', DE:'Industrials', 'CNR.TO':'Industrials', 'CP.TO':'Industrials',
   LIN:'Materials', SHW:'Materials', ECL:'Materials', NEM:'Materials', FCX:'Materials', 'ABX.TO':'Materials', 'NTR.TO':'Materials',
   NEE:'Utilities', DUK:'Utilities', SO:'Utilities', D:'Utilities', AEP:'Utilities',
-  AMT:'Real Estate', PLD:'Real Estate', SPG:'Real Estate', EQIX:'Real Estate', O:'Real Estate'
+  AMT:'Real Estate', PLD:'Real Estate', SPG:'Real Estate', EQIX:'Real Estate', O:'Real Estate',
+  /* --- additional coverage (GICS sectors) --- */
+  // Technology
+  MRVL:'Technology', SNOW:'Technology', GFS:'Technology', ASML:'Technology', IONQ:'Technology',
+  RGTI:'Technology', CBRS:'Technology', NLST:'Technology', GRMN:'Technology', SMSN:'Technology',
+  'SMSN.IL':'Technology', KYCCF:'Technology', '6861.T':'Technology', '6981.T':'Technology',
+  // Communication Services
+  PINS:'Communication Services', AMC:'Communication Services',
+  // Consumer Discretionary
+  F:'Consumer Discretionary', GM:'Consumer Discretionary', LCID:'Consumer Discretionary',
+  QS:'Consumer Discretionary', LVS:'Consumer Discretionary', H:'Consumer Discretionary',
+  'QSR.TO':'Consumer Discretionary',
+  // Consumer Staples
+  KHC:'Consumer Staples',
+  // Financials
+  'NA.TO':'Financials', 'LB.TO':'Financials', 'MFC.TO':'Financials', 'FFH.TO':'Financials',
+  'BN.TO':'Financials', 'BRK-B':'Financials', MKL:'Financials', TD:'Financials',
+  'PSH.L':'Financials', '8795.T':'Financials',
+  // Healthcare
+  DGX:'Healthcare', TEVA:'Healthcare', SOLV:'Healthcare',
+  // Energy (incl. uranium per GICS)
+  CVE:'Energy', SHEL:'Energy', 'CCO.TO':'Energy', 'NXE.TO':'Energy',
+  EBBGF:'Energy', EBGEF:'Energy',
+  // Industrials
+  AAL:'Industrials', DAL:'Industrials', RTX:'Industrials', EADSY:'Industrials',
+  RKLB:'Industrials', SPCX:'Industrials', 'ATRL.TO':'Industrials', 'PYR.TO':'Industrials',
+  '0293.HK':'Industrials', '6503.T':'Industrials',
+  // Materials
+  'K.TO':'Materials', 'DNG.TO':'Materials', VALE:'Materials',
+  // Utilities
+  'H.TO':'Utilities', 'TA-PF.TO':'Utilities',
+  // Real Estate
+  'CAR-UN.TO':'Real Estate'
 };
 function sectorOf(h){
   if (h.sector) return h.sector;
+  const sym = h.y||'';
+  if (SECTOR_MAP[sym]) return SECTOR_MAP[sym]; // explicit symbol match wins even for ETFs (e.g. REITs)
   if (h.cls==='Fund' || h.cls==='ETF') return 'Fund/Diversified';
-  return SECTOR_MAP[h.y||''] || 'Unclassified';
+  // preferred shares & secondary listings: try the root ticker (ENB-PA.TO -> ENB, TD -> TD.TO)
+  const root = sym.split(/[.-]/)[0];
+  if (root && SECTOR_MAP[root]) return SECTOR_MAP[root];
+  if (root && SECTOR_MAP[root+'.TO']) return SECTOR_MAP[root+'.TO'];
+  return 'Unclassified';
 }
 const BREAKDOWN_PALETTE = ['#00d4ff','#ff6b6b','#ffd93d','#51e58f','#c77dff','#ff9f43','#4dd0e1','#f368a6'];
 const NEUTRAL_LABELS = ['Unclassified','Other','Cash & Other','Cash'];
@@ -890,7 +964,7 @@ function renderSummary(){
       ).join('')+'</div></div>';
   }
   if (sumGroup==='sector'){
-    const n = HOLDINGS.filter(h=>!h.sector && h.cls!=='Fund' && h.cls!=='ETF' && !SECTOR_MAP[h.y||'']).length;
+    const n = HOLDINGS.filter(h=>sectorOf(h)==='Unclassified').length;
     if (n>0) html += '<div class="card"><p class="hint">'+n+' equity holding'+(n===1?'':'s')+' unclassified — tag them via Holdings &rarr; Edit &rarr; Sector.</p></div>';
   }
   view().innerHTML = html;
@@ -977,9 +1051,17 @@ function renderTax(){
    withholding tax (default 15% treaty rate) assumed fully creditable against that Canadian tax. ROC is untaxed (reduces ACB,
    not tracked here). Confirm all of this with your accountant before acting. */
 const DIV_CACHE_KEY = 'pt_div_cache';
+const DIV_TTL_MS = 30*24*60*60*1000; // auto-refresh dividend history when older than 30 days
 let DIVCACHE = {};
 try{ DIVCACHE = JSON.parse(localStorage.getItem(DIV_CACHE_KEY)) || {}; }catch(e){}
 function saveDivCache(){ try{ localStorage.setItem(DIV_CACHE_KEY, JSON.stringify(DIVCACHE)); }catch(e){} }
+function divTargets(){ return [...new Set(HOLDINGS.filter(h=>h.y && !(h.divRate>0)).map(h=>h.y))]; }
+function divStaleTargets(){ return divTargets().filter(sym=>{ const c = DIVCACHE[sym]; return !c || (Date.now()-c.fetchedAt) >= DIV_TTL_MS; }); }
+function divCacheAge(){ // newest & oldest fetch times across cached target symbols, or null if nothing cached
+  const ts = divTargets().map(s=>DIVCACHE[s] && DIVCACHE[s].fetchedAt).filter(Boolean);
+  return ts.length ? {oldest:Math.min(...ts), newest:Math.max(...ts), count:ts.length} : null;
+}
+let divFetchBusy = false;
 const DIV_FREQ_DAYS = {Monthly:30, Quarterly:91, 'Semi-Annual':182, Annual:365};
 function divEventsParse(t){
   const i = t.search(/\{"chart"/); if (i<0) return null;
@@ -1013,23 +1095,28 @@ function deriveDivStats(events){
   if (intervalDays){ while (nextDate <= new Date()) nextDate = new Date(nextDate.getTime()+intervalDays*86400000); }
   return {lastAmount:last.amount, freq, annualRate, nextDate: intervalDays ? nextDate.toISOString().slice(0,10) : null, fetchedAt: Date.now()};
 }
-async function refreshDivData(){
-  const targets = [...new Set(HOLDINGS.filter(h=>h.y && !(h.divRate>0)).map(h=>h.y))];
-  if (!targets.length){ document.getElementById('status').textContent = 'No symbols need auto-fetch (all set manually, or none have a Yahoo symbol).'; return; }
+async function refreshDivData(force){
+  if (divFetchBusy) return;
+  const targets = force ? divTargets() : divStaleTargets();
+  if (!targets.length){ document.getElementById('status').textContent = 'Dividend history is up to date (auto-refreshes after 30 days).'; return; }
+  divFetchBusy = true;
   const st = document.getElementById('status');
-  let done = 0;
-  for (const sym of targets){
-    const cached = DIVCACHE[sym];
-    if (cached && (Date.now()-cached.fetchedAt) < 20*24*60*60*1000){ done++; continue; }
-    st.textContent = 'Fetching dividend history '+(done+1)+'/'+targets.length+': '+sym+'…';
-    const events = await fetchVia('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(sym)+'?range=2y&interval=1mo&events=div', divEventsParse);
-    const stats = deriveDivStats(events);
-    DIVCACHE[sym] = stats || {freq:'None', annualRate:0, fetchedAt:Date.now()};
-    done++;
-    await sleep(120);
-  }
-  saveDivCache();
-  st.textContent = 'Dividend history updated for '+targets.length+' symbol'+(targets.length===1?'':'s')+'.';
+  try{
+    let done = 0;
+    for (const sym of targets){
+      st.textContent = 'Fetching dividend history '+(done+1)+'/'+targets.length+': '+sym+'…';
+      const events = await fetchVia('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(sym)+'?range=2y&interval=1mo&events=div', divEventsParse);
+      const stats = deriveDivStats(events);
+      // keep the old cached numbers if the fetch failed outright (null ≠ "pays no dividend")
+      if (stats) DIVCACHE[sym] = stats;
+      else if (events) DIVCACHE[sym] = {freq:'None', annualRate:0, fetchedAt:Date.now()};
+      done++;
+      if (done % 5 === 0) saveDivCache(); // save progressively
+      await sleep(120);
+    }
+    saveDivCache();
+    st.textContent = 'Dividend history updated for '+targets.length+' symbol'+(targets.length===1?'':'s')+'.';
+  } finally { divFetchBusy = false; }
   if (tab==='div') renderDividends();
 }
 function computeDivForHolding(h){
@@ -1041,6 +1128,20 @@ function computeDivForHolding(h){
   if (c && c.annualRate>0) return {rate:c.annualRate, freq:c.freq, nextDate:c.nextDate, source:'auto'};
   return {rate:0, freq:'None', nextDate:null, source:'none'};
 }
+/* Infer a dividend type when none is set, so corporate after-tax figures are actually computed
+   instead of silently falling back to gross. Canadian-listed securities (and known Canadian issuers
+   held via a US/OTC listing) → Canadian eligible; anything else with a symbol → Foreign (15% WHT default).
+   Override per holding via Holdings → Edit → Dividend type. Approximation: Canadian ETF/fund
+   distributions are treated as eligible dividends even though they may include interest/ROC. */
+const CDN_ISSUERS_US_LISTED = new Set(['TD','EBBGF','EBGEF']);
+function effDivType(h){
+  if (h.divType) return h.divType;
+  const sym = h.y||'';
+  if (/\.(TO|V|NE|CN)$/i.test(sym) || CDN_ISSUERS_US_LISTED.has(sym)) return 'CDN-Eligible';
+  if (sym) return 'Foreign';
+  return ''; // no symbol (G&M fund code only) — cannot infer, shown at gross with *
+}
+function corpDivTax(h, grossCAD){ return divTaxCalc(grossCAD, effDivType(h), h.divWHT); }
 function divTaxCalc(grossCAD, divType, whtPct){
   if (divType==='CDN-Eligible' || divType==='CDN-NonEligible'){
     const taxOwed = grossCAD*0.3833;
@@ -1064,13 +1165,22 @@ function renderDividends(){
   const paying = HOLDINGS.map(h=>({h, d:computeDivForHolding(h)})).filter(x=>x.d.rate>0);
   const isCorp = h => TAX_CORP_ENTITIES.some(e=>(h.entity||'').trim().toUpperCase()===e.toUpperCase());
 
+  // auto-refresh: kick off a background fetch for any symbol missing or older than 30 days
+  const staleDivs = divStaleTargets();
+  if (staleDivs.length && !divFetchBusy) setTimeout(()=>refreshDivData(), 0); // fire-and-forget; never blocks the render
+  const age = divCacheAge();
+  const ageTxt = age
+    ? 'History cached '+new Date(age.newest).toLocaleDateString('en-CA')+(age.oldest!==age.newest?' (oldest '+new Date(age.oldest).toLocaleDateString('en-CA')+')':'')+' &middot; auto-refreshes after 30 days.'+(staleDivs.length?' Updating '+staleDivs.length+' symbol'+(staleDivs.length===1?'':'s')+' in the background&hellip;':'')
+    : (staleDivs.length ? 'No cached history yet — fetching in the background&hellip;' : '');
+
   let html = '<div class="card"><h2>Dividends &amp; distributions</h2>'+
     '<p class="hint">Absolute (gross) income for all holdings; estimated after-tax income for corporate accounts (SAJE, SCMPC, AGMPC) only. '+
     'Rates/dates are either manually entered (Holdings &rarr; Edit) or auto-derived from trailing Yahoo dividend history when available — projected forward, not guaranteed. Estimate only, not tax advice.</p>'+
-    '<div class="bar"><button class="sm" onclick="refreshDivData()">Fetch / update dividend history</button></div></div>';
+    '<div class="bar"><button class="sm" onclick="refreshDivData(true)">Re-fetch all dividend history</button></div>'+
+    (ageTxt?'<p class="hint">'+ageTxt+'</p>':'')+'</div>';
 
   if (!paying.length){
-    html += '<div class="card"><p class="hint">No dividend data yet. Tap "Fetch / update dividend history" to pull trailing history for holdings with a Yahoo symbol, or set a Distribution rate manually on Holdings &rarr; Edit (recommended for preferred shares, which are rarely covered by free data feeds).</p></div>';
+    html += '<div class="card"><p class="hint">No dividend data yet. History is being fetched automatically for holdings with a Yahoo symbol; you can also set a Distribution rate manually on Holdings &rarr; Edit (recommended for preferred shares, which are rarely covered by free data feeds).</p></div>';
     view().innerHTML = html;
     return;
   }
@@ -1081,7 +1191,7 @@ function renderDividends(){
     const k = acctKey(h);
     const annualGrossCAD = h.qty*d.rate*(f[h.ccy]||1);
     const corp = isCorp(h);
-    const tx = corp ? divTaxCalc(annualGrossCAD, h.divType, h.divWHT) : null;
+    const tx = corp ? corpDivTax(h, annualGrossCAD) : null;
     if (!byAccount.has(k)) byAccount.set(k, {gross:0, afterTax:0, corp, hasUnclassified:false});
     const a = byAccount.get(k);
     a.gross += annualGrossCAD;
@@ -1095,7 +1205,7 @@ function renderDividends(){
     html += '<tr><td class="nm">'+esc(k)+'</td><td>'+money(a.gross)+'</td><td>'+(a.corp ? money(a.afterTax)+(a.hasUnclassified?' *':'') : '<span class="hint">— (personal)</span>')+'</td></tr>';
   }
   html += '<tr><td class="nm"><b>Total</b></td><td><b>'+money(sumGross)+'</b></td><td><b>'+money(sumAfter)+'</b></td></tr>';
-  html += '</table></div><p class="hint">* includes holdings with no Dividend type set — shown at gross, not tax-adjusted. After-tax only computed for corporate accounts.</p></div>';
+  html += '</table></div><p class="hint">After-tax only computed for corporate accounts (Ontario CCPC rates): Canadian eligible/non-eligible dividends &mdash; Part IV tax '+(38.33).toFixed(2)+'% (fully refundable via RDTOH when the corp pays out dividends); foreign dividends &mdash; '+(TAX_CORP_RATE*100).toFixed(2)+'% AII rate with foreign WHT credited. Dividend type is auto-inferred from the listing when not set (TSX/Canadian issuers &rarr; Canadian eligible; others &rarr; foreign, 15% WHT) — override via Holdings &rarr; Edit &rarr; Dividend type. * = could not infer (no symbol), shown at gross.</p></div>';
 
   // preferred share subtotal
   const prefs = paying.filter(x=>x.h.cls==='Preferred');
@@ -1104,7 +1214,7 @@ function renderDividends(){
     for (const {h,d} of prefs){
       const annualGrossCAD = h.qty*d.rate*(f[h.ccy]||1);
       pGross += annualGrossCAD;
-      pAfter += isCorp(h) ? (divTaxCalc(annualGrossCAD, h.divType, h.divWHT).afterTax ?? annualGrossCAD) : annualGrossCAD;
+      pAfter += isCorp(h) ? (corpDivTax(h, annualGrossCAD).afterTax ?? annualGrossCAD) : annualGrossCAD;
     }
     html += '<div class="card"><h2>Preferred share income</h2><p class="hint">'+prefs.length+' preferred holding'+(prefs.length===1?'':'s')+'.</p>'+
       '<div class="twrap"><table class="fit"><tr><th>Security</th><th>Account</th><th>Rate/yr</th><th>Gross/yr</th></tr>'+
@@ -1147,7 +1257,7 @@ function renderDividends(){
     while (dt < rangeEnd && guard<60){
       const monthKey = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');
       const grossCAD = h.qty*perPayNative*(f[h.ccy]||1);
-      const tx = corp ? divTaxCalc(grossCAD, h.divType, h.divWHT) : null;
+      const tx = corp ? corpDivTax(h, grossCAD) : null;
       const afterTaxCAD = corp ? (tx.afterTax==null?grossCAD:tx.afterTax) : grossCAD;
       const atMap = monthlyByEntity.get(monthKey);
       if (atMap){
