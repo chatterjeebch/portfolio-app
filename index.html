@@ -10,6 +10,7 @@
 <title>Portfolio Tracker</title>
 <!-- 2026-07-11: news relevance filter (max 2/holding), expanded sector map, 30-day dividend cache auto-refresh, corp dividend tax inference -->
 <!-- 2026-07-12: allocation rows expandable — tap a sector/class/currency/account row to list its holdings (value in 100K, entity, % of group, % of portfolio) -->
+<!-- 2026-07-12b: NAME_SECTOR_MAP — manual sector classifications keyed by holding name (survive data updates); ticker-in-name fallback for symbol-less holdings -->
 
 <style>
 :root{--bg:#0e1117;--card:#161b24;--card2:#1c2330;--txt:#e6e9ef;--dim:#8b93a3;--grn:#3fca6b;--red:#ff5d5d;--acc:#4ea1ff;--bord:#252d3d}
@@ -902,8 +903,31 @@ const SECTOR_MAP = {
   // Real Estate
   'CAR-UN.TO':'Real Estate'
 };
+/* Manual classifications keyed by exact holding name — set by owner, take priority over symbol lookups.
+   Keyed by name (not symbol) so they survive holdings updates even when the Yahoo symbol is missing or differs. */
+const NAME_SECTOR_MAP = {
+  'UnitedHealth Group (UNH)':'Healthcare',
+  'TransAlta 5.85% Pref Ser-C (TA.PR.F)':'Utilities',
+  'Walmart (WMT)':'Consumer Staples',
+  'Vale SA ADR (VALE)':'Materials',
+  'Procter & Gamble (PG)':'Consumer Staples',
+  'Kraft Heinz (KHC)':'Consumer Staples',
+  'Hydro One (H)':'Utilities',
+  'Abbott Laboratories (ABT)':'Healthcare',
+  'Kinross Gold (K)':'Materials',
+  'Johnson & Johnson (JNJ)':'Consumer Staples', // owner preference (GICS: Healthcare)
+  'Canadian Apartment Properties REIT (CAR.UN)':'Real Estate',
+  'Quest Diagnostics (DGX)':'Healthcare',
+  'Coca-Cola (KO)':'Consumer Staples',
+  'Dynacor Group (DNG)':'Materials',
+  'Solventum (SOLV)':'Industrials', // owner preference (GICS: Healthcare)
+  'PepsiCo (PEP)':'Consumer Staples',
+  'Teva Pharmaceutical ADR (TEVA)':'Healthcare'
+};
 function sectorOf(h){
-  if (h.sector) return h.sector;
+  if (h.sector) return h.sector; // per-holding override set via Holdings -> Edit always wins
+  const nm = (h.name||'').trim();
+  if (NAME_SECTOR_MAP[nm]) return NAME_SECTOR_MAP[nm];
   const sym = h.y||'';
   if (SECTOR_MAP[sym]) return SECTOR_MAP[sym]; // explicit symbol match wins even for ETFs (e.g. REITs)
   if (h.cls==='Fund' || h.cls==='ETF') return 'Fund/Diversified';
@@ -911,6 +935,15 @@ function sectorOf(h){
   const root = sym.split(/[.-]/)[0];
   if (root && SECTOR_MAP[root]) return SECTOR_MAP[root];
   if (root && SECTOR_MAP[root+'.TO']) return SECTOR_MAP[root+'.TO'];
+  // last resort: ticker embedded in the holding name, e.g. "Walmart (WMT)" or "TransAlta ... (TA.PR.F)"
+  const m = nm.match(/\(([A-Za-z0-9.\-]+)\)\s*$/);
+  if (m){
+    const t = m[1].toUpperCase();
+    const yh = t.replace('.PR.','-P').replace('.UN','-UN'); // TMX -> Yahoo style (TA.PR.F -> TA-PF, CAR.UN -> CAR-UN)
+    const r = t.split(/[.-]/)[0];
+    for (const cand of [t, t+'.TO', yh, yh+'.TO', r, r+'.TO'])
+      if (SECTOR_MAP[cand]) return SECTOR_MAP[cand];
+  }
   return 'Unclassified';
 }
 const BREAKDOWN_PALETTE = ['#00d4ff','#ff6b6b','#ffd93d','#51e58f','#c77dff','#ff9f43','#4dd0e1','#f368a6'];
