@@ -9,6 +9,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>Portfolio Tracker</title>
 <!-- 2026-07-11: news relevance filter (max 2/holding), expanded sector map, 30-day dividend cache auto-refresh, corp dividend tax inference -->
+<!-- 2026-07-12: allocation rows expandable — tap a sector/class/currency/account row to list its holdings (value in 100K, entity, % of group, % of portfolio) -->
 
 <style>
 :root{--bg:#0e1117;--card:#161b24;--card2:#1c2330;--txt:#e6e9ef;--dim:#8b93a3;--grn:#3fca6b;--red:#ff5d5d;--acc:#4ea1ff;--bord:#252d3d}
@@ -99,6 +100,13 @@ textarea{font-family:monospace;font-size:12px}
 .legend2 .swatch{width:10px;height:10px;border-radius:3px;flex-shrink:0}
 .legend2 .llabel{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .legend2 .lval{font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.legend2 .lrow{cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none}
+.legend2 .chev{font-size:10px;color:var(--dim);flex-shrink:0;width:12px;text-align:center}
+.ldetail{padding:2px 0 10px 18px;border-bottom:1px solid var(--bord)}
+.ldetail .drow{display:flex;justify-content:space-between;gap:10px;padding-top:7px}
+.ldetail .dname{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ldetail .dval{font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ldetail .dsub{font-size:11px;color:var(--dim);padding-top:1px}
 .holdlist{padding:0 12px}
 .holdrow{padding:8px 0;border-bottom:1px solid var(--bord)}
 .holdrow:last-child{border-bottom:0}
@@ -910,14 +918,24 @@ const NEUTRAL_LABELS = ['Unclassified','Other','Cash & Other','Cash'];
 function computeBreakdown(mode){
   const f = fx || STATIC_FX;
   const map = new Map();
-  const add = (label, v) => map.set(label, (map.get(label)||0)+v);
+  const items = new Map(); // label -> [{name, entity, value}] for the expandable drill-down
+  const add = (label, v, it) => {
+    map.set(label, (map.get(label)||0)+v);
+    if (it){
+      if (!items.has(label)) items.set(label, new Map());
+      const im = items.get(label), k = it.name+'|'+it.entity; // merge same holding across accounts
+      if (im.has(k)) im.get(k).value += it.value; else im.set(k, it);
+    }
+  };
   for (const h of HOLDINGS){
     const v = rowCalc(h).mv*(f[h.ccy]||1);
-    add(mode==='sector'?sectorOf(h): mode==='class'?(h.cls||'Equity'): mode==='ccy'?h.ccy: acctKey(h), v);
+    add(mode==='sector'?sectorOf(h): mode==='class'?(h.cls||'Equity'): mode==='ccy'?h.ccy: acctKey(h), v,
+      {name:h.name, entity:h.entity||'', value:v});
   }
   for (const c of CASH){
     const v = c.amount*(f[c.ccy]||1);
-    add(mode==='sector'?'Cash & Other': mode==='class'?'Cash': mode==='ccy'?c.ccy: acctKey(c), v);
+    add(mode==='sector'?'Cash & Other': mode==='class'?'Cash': mode==='ccy'?c.ccy: acctKey(c), v,
+      {name:'Cash · '+c.ccy, entity:c.entity||'', value:v});
   }
   const total = [...map.values()].reduce((a,b)=>a+b,0);
   let arr = [...map.entries()].map(([label,value])=>({label,value,pct: total>0?value/total*100:0}));
@@ -927,6 +945,9 @@ function computeBreakdown(mode){
     const head = arr.slice(0,MAX-1), tail = arr.slice(MAX-1);
     const ov = tail.reduce((a,x)=>a+x.value,0);
     head.push({label:'Other', value:ov, pct: total>0?ov/total*100:0});
+    const om = new Map();
+    for (const t of tail) for (const [k,it] of (items.get(t.label)||new Map())) om.set(t.label+'|'+k, it);
+    items.set('Other', om);
     arr = head;
   }
   let idx = 0;
@@ -936,14 +957,17 @@ function computeBreakdown(mode){
     if (!neutral) idx++;
     return {...s, color};
   });
-  return {arr, total};
+  return {arr, total, items};
 }
 let sumGroup = localStorage.getItem('pt_summary_group') || 'sector';
-function setSumGroup(g){ sumGroup = g; localStorage.setItem('pt_summary_group', g); renderSummary(); }
+let sumExpanded = null; // label of the currently expanded allocation row
+function setSumGroup(g){ sumGroup = g; sumExpanded = null; localStorage.setItem('pt_summary_group', g); renderSummary(); }
+function toggleSumRow(l){ sumExpanded = (sumExpanded===l ? null : l); renderSummary(); }
 function renderSummary(){
   if (!HOLDINGS.length){ renderFirstRun(); return; }
   const GROUPS = [['sector','Sector'],['class','Class'],['ccy','Currency'],['account','Account']];
-  const {arr, total} = computeBreakdown(sumGroup);
+  const {arr, total, items} = computeBreakdown(sumGroup);
+  const NOUN = {sector:'sector', class:'class', ccy:'currency', account:'account'}[sumGroup] || 'group';
   let html = '<div class="card"><h2>Allocation</h2>'+
     '<div class="grouptoggle">'+GROUPS.map(([k,lbl])=>'<button class="sm'+(sumGroup===k?'':' ghost')+'" onclick="setSumGroup(\''+k+'\')">'+lbl+'</button>').join('')+'</div>';
   if (!total){
@@ -956,12 +980,27 @@ function renderSummary(){
     }).join(', ');
     html += '<div class="chartbox"><div class="pie-wrap"><div class="pie" style="background:conic-gradient('+stops+')"></div>'+
       '<div class="pie-hole"><b>CA$ '+(total/100000).toFixed(1)+'</b><span>&times;100K total</span></div></div></div>'+
-      '<p class="hint">Values below are in CA$100K increments (e.g. 3.5 = CA$350,000).</p>'+
-      '<div class="legend2">'+arr.map(s=>
-        '<div class="lrow"><span class="swatch" style="background:'+s.color+'"></span>'+
-        '<span class="llabel">'+esc(s.label)+'</span>'+
-        '<span class="lval">'+(s.value/100000).toFixed(1)+' / '+s.pct.toFixed(0)+'%</span></div>'
-      ).join('')+'</div></div>';
+      '<p class="hint">Values below are in CA$100K increments (e.g. 3.5 = CA$350,000). Tap a row to see its holdings.</p>'+
+      '<div class="legend2">'+arr.map(s=>{
+        const open = sumExpanded===s.label;
+        let row = '<div class="lrow" data-l="'+esc(s.label)+'" onclick="toggleSumRow(this.dataset.l)">'+
+          '<span class="swatch" style="background:'+s.color+'"></span>'+
+          '<span class="llabel">'+esc(s.label)+'</span>'+
+          '<span class="lval">'+(s.value/100000).toFixed(1)+' / '+s.pct.toFixed(0)+'%</span>'+
+          '<span class="chev">'+(open?'&#9662;':'&#9656;')+'</span></div>';
+        if (open){
+          const its = [...(items.get(s.label)||new Map()).values()].sort((a,b)=>b.value-a.value);
+          row += '<div class="ldetail">'+(its.length ? its.map(it=>{
+            const v100 = it.value/100000;
+            return '<div class="drow"><span class="dname">'+esc(it.name)+'</span>'+
+              '<span class="dval">'+(v100>0 && v100<0.05 ? '&lt;0.1' : v100.toFixed(1))+'</span></div>'+
+              '<div class="dsub">'+esc(it.entity)+(it.entity?' &middot; ':'')+
+              (s.value>0 ? (it.value/s.value*100).toFixed(1) : '0.0')+'% of '+NOUN+' &middot; '+
+              (total>0 ? (it.value/total*100).toFixed(1) : '0.0')+'% of portfolio</div>';
+          }).join('') : '<div class="dsub">No holdings in this group.</div>')+'</div>';
+        }
+        return row;
+      }).join('')+'</div></div>';
   }
   if (sumGroup==='sector'){
     const n = HOLDINGS.filter(h=>sectorOf(h)==='Unclassified').length;
