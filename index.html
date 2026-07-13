@@ -11,6 +11,7 @@
 <!-- 2026-07-11: news relevance filter (max 2/holding), expanded sector map, 30-day dividend cache auto-refresh, corp dividend tax inference -->
 <!-- 2026-07-12: allocation rows expandable — tap a sector/class/currency/account row to list its holdings (value in 100K, entity, % of group, % of portfolio) -->
 <!-- 2026-07-12b: NAME_SECTOR_MAP — manual sector classifications keyed by holding name (survive data updates); ticker-in-name fallback for symbol-less holdings -->
+<!-- 2026-07-12c: BONDS data model + Fixed Income tab (value native/USD, yearly income); Dividends tab renamed Income with interest section (pre/post-tax); bonds included in totals, snapshots and allocation -->
 
 <style>
 :root{--bg:#0e1117;--card:#161b24;--card2:#1c2330;--txt:#e6e9ef;--dim:#8b93a3;--grn:#3fca6b;--red:#ff5d5d;--acc:#4ea1ff;--bord:#252d3d}
@@ -144,7 +145,8 @@ textarea{font-family:monospace;font-size:12px}
   <button id="tb-snap" onclick="setTab('snap')">Snapshot</button>
   <button id="tb-sum" onclick="setTab('sum')">Summary</button>
   <button id="tb-tax" onclick="setTab('tax')">Tax</button>
-  <button id="tb-div" onclick="setTab('div')">Dividends</button>
+  <button id="tb-div" onclick="setTab('div')">Income</button>
+  <button id="tb-fi" onclick="setTab('fi')">Fixed Income</button>
   <button id="tb-port" class="on" onclick="setTab('port')">Portfolio</button>
   <button id="tb-hold" onclick="setTab('hold')">Holdings</button>
   <button id="tb-cash" onclick="setTab('cash')">Cash</button>
@@ -167,12 +169,21 @@ One snapshot auto-saves per weekday, at market close (16:15 ET or later), when t
 <script>
 'use strict';
 /* ---------------- storage ---------------- */
-const LS_H='pt_holdings', LS_C='pt_cash';
-let HOLDINGS = [], CASH = [];
+const LS_H='pt_holdings', LS_C='pt_cash', LS_B='pt_bonds';
+let HOLDINGS = [], CASH = [], BONDS = [];
 try{ HOLDINGS = JSON.parse(localStorage.getItem(LS_H)) || []; }catch(e){}
 try{ CASH = JSON.parse(localStorage.getItem(LS_C)) || []; }catch(e){}
+try{ BONDS = JSON.parse(localStorage.getItem(LS_B)) || []; }catch(e){}
 function saveH(){ localStorage.setItem(LS_H, JSON.stringify(HOLDINGS)); schedulePush(); }
 function saveC(){ localStorage.setItem(LS_C, JSON.stringify(CASH)); schedulePush(); }
+function saveB(){ localStorage.setItem(LS_B, JSON.stringify(BONDS)); schedulePush(); }
+/* bond helpers: face is par amount; price is per-100 (except GIC-style where price already includes growth) */
+function bondCalc(b){
+  const mv = b.face * (b.price!=null ? b.price/100 : 1);
+  const income = b.face * (b.couponPct||0)/100;
+  return {mv, income};
+}
+const ISA_RATE = h => { const m=(h.name||'').match(/@\s*([\d.]+)\s*%/); return m?parseFloat(m[1]):0; };
 
 /* IndexedDB for snapshots */
 let dbp = null;
@@ -249,7 +260,7 @@ async function ghGist(method, path, body){
 async function syncCreate(pass){
   const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
   const updatedAt = new Date().toISOString();
-  const blob = await encryptBlob({holdings:HOLDINGS, cash:CASH, updatedAt}, pass, salt);
+  const blob = await encryptBlob({holdings:HOLDINGS, cash:CASH, bonds:BONDS, updatedAt}, pass, salt);
   const g = await ghGist('POST', '', {description:'Portfolio Tracker sync (encrypted — do not edit on github.com)', public:false,
     files:{[GIST_FILE]:{content: JSON.stringify(blob)}}});
   SYNC = {token:SYNC.token, gist:g.id, pass, salt};
@@ -260,7 +271,7 @@ async function syncCreate(pass){
 async function syncPush(){
   if (!syncOn()) return;
   const updatedAt = new Date().toISOString();
-  const blob = await encryptBlob({holdings:HOLDINGS, cash:CASH, updatedAt}, SYNC.pass, SYNC.salt);
+  const blob = await encryptBlob({holdings:HOLDINGS, cash:CASH, bonds:BONDS, updatedAt}, SYNC.pass, SYNC.salt);
   await ghGist('PATCH', '/'+SYNC.gist, {files:{[GIST_FILE]:{content: JSON.stringify(blob)}}});
   localStorage.setItem(LS_UPD, updatedAt);
 }
@@ -273,9 +284,10 @@ async function syncPull(apply){
   const data = await decryptBlob(blob, SYNC.pass);
   const localUpd = localStorage.getItem(LS_UPD) || '';
   if (apply && data.updatedAt > localUpd){
-    HOLDINGS = data.holdings||[]; CASH = data.cash||[];
+    HOLDINGS = data.holdings||[]; CASH = data.cash||[]; BONDS = data.bonds||[];
     localStorage.setItem(LS_H, JSON.stringify(HOLDINGS));
     localStorage.setItem(LS_C, JSON.stringify(CASH));
+    localStorage.setItem(LS_B, JSON.stringify(BONDS));
     localStorage.setItem(LS_UPD, data.updatedAt);
     quotes = {};
     if (tab==='port') renderPort(); if (tab==='hold') renderHold(); if (tab==='cash') renderCash(); if (tab==='snap') renderSnap(); if (tab==='sum') renderSummary(); if (tab==='tax') renderTax(); if (tab==='div') renderDividends();
@@ -574,6 +586,11 @@ function buildRows(){
     rows.push({entity:h.entity,broker:h.broker,account:h.account,atype:h.atype,type:h.cls||'Holding',
       name:h.name,sym:h.y||h.gm||'',ccy:h.ccy,qty:h.qty,price:c.priceNat,mv:c.mv,mvCAD:c.mv*(f[h.ccy]||1),live:c.live});
   }
+  for (const b of BONDS){
+    const bc = bondCalc(b);
+    rows.push({entity:b.entity,broker:b.broker,account:b.account,atype:b.atype,type:'Bond',
+      name:b.name,sym:'',ccy:b.ccy,qty:b.face,price:b.price,mv:bc.mv,mvCAD:bc.mv*(f[b.ccy]||1),live:false});
+  }
   for (const c of CASH){
     rows.push({entity:c.entity,broker:c.broker,account:c.account,atype:c.atype,type:'Cash',
       name:'Cash',sym:'',ccy:c.ccy,qty:'',price:'',mv:c.amount,mvCAD:c.amount*(f[c.ccy]||1),live:true});
@@ -660,7 +677,7 @@ async function exportTotalsCSV(){
 async function exportBackup(){
   const snaps = await allSnaps();
   download('portfolio_backup_'+torontoNow().date+'.json',
-    JSON.stringify({holdings:HOLDINGS, cash:CASH, snapshots:snaps}, null, 1),
+    JSON.stringify({holdings:HOLDINGS, cash:CASH, bonds:BONDS, snapshots:snaps}, null, 1),
     'application/json');
 }
 
@@ -671,6 +688,7 @@ function applyData(obj){
   for (const x of h) if (typeof x.name!=='string' || typeof x.qty!=='number') throw new Error('Invalid holding row');
   HOLDINGS = h; saveH();
   if (Array.isArray(obj.cash)){ CASH = obj.cash; saveC(); }
+  if (Array.isArray(obj.bonds)){ BONDS = obj.bonds; saveB(); }
   return obj.snapshots;
 }
 async function importFile(file, isRestore){
@@ -680,7 +698,7 @@ async function importFile(file, isRestore){
     if (isRestore && Array.isArray(snaps)) for (const s of snaps) await putSnap(s);
     quotes = {};
     setTab('port');
-    document.getElementById('status').textContent = 'Imported '+HOLDINGS.length+' holdings'+(CASH.length?', '+CASH.length+' cash entries':'')+'. Fetching prices…';
+    document.getElementById('status').textContent = 'Imported '+HOLDINGS.length+' holdings'+(CASH.length?', '+CASH.length+' cash entries':'')+(BONDS.length?', '+BONDS.length+' bonds':'')+'. Fetching prices…';
     refresh();
   }catch(e){ alert('Import failed: '+e.message); }
 }
@@ -689,9 +707,9 @@ async function importFile(file, isRestore){
 let tab = 'port';
 function setTab(t){
   tab = t;
-  for (const id of ['snap','sum','tax','div','port','hold','cash','data']) document.getElementById('tb-'+id).className = (id===t?'on':'');
-  document.getElementById('portbar').style.display = (t==='port'||t==='snap'||t==='sum'||t==='tax'||t==='div') ? 'flex' : 'none';
-  ({snap:renderSnap, sum:renderSummary, tax:renderTax, div:renderDividends, port:renderPort, hold:renderHold, cash:renderCash, data:renderData})[t]();
+  for (const id of ['snap','sum','tax','div','fi','port','hold','cash','data']) document.getElementById('tb-'+id).className = (id===t?'on':'');
+  document.getElementById('portbar').style.display = (t==='port'||t==='snap'||t==='sum'||t==='tax'||t==='div'||t==='fi') ? 'flex' : 'none';
+  ({snap:renderSnap, sum:renderSummary, tax:renderTax, div:renderDividends, fi:renderFI, port:renderPort, hold:renderHold, cash:renderCash, data:renderData})[t]();
 }
 const view = ()=>document.getElementById('view');
 
@@ -704,6 +722,11 @@ function renderPort(){
     if (!groups.has(k)) groups.set(k, {rows:[], cash:[]});
     groups.get(k).rows.push(h);
   }
+  for (const b of BONDS){
+    const k = acctKey(b);
+    if (!groups.has(k)) groups.set(k, {rows:[], cash:[], bonds:[]});
+    (groups.get(k).bonds = groups.get(k).bonds||[]).push(b);
+  }
   for (const c of CASH){
     const k = acctKey(c);
     if (!groups.has(k)) groups.set(k, {rows:[], cash:[]});
@@ -715,6 +738,7 @@ function renderPort(){
     calcs.sort((a,b)=>b.c.mv*(f[b.h.ccy]||1) - a.c.mv*(f[a.h.ccy]||1));
     const byCcy = {}; let acctCAD = 0;
     for (const {h,c} of calcs){ byCcy[h.ccy]=(byCcy[h.ccy]||0)+c.mv; acctCAD += c.mv*(f[h.ccy]||1); }
+    for (const b of (g.bonds||[])){ const bc=bondCalc(b); byCcy[b.ccy]=(byCcy[b.ccy]||0)+bc.mv; acctCAD += bc.mv*(f[b.ccy]||1); }
     for (const c of g.cash){ byCcy[c.ccy]=(byCcy[c.ccy]||0)+c.amount; acctCAD += c.amount*(f[c.ccy]||1); }
     grandCAD += acctCAD;
     natTotals.push({k, byCcy, acctCAD});
@@ -730,6 +754,12 @@ function renderPort(){
         '<div class="hd-line3"><span class="hd-dim">Book '+money(h.acb)+'</span>'+
         '<span class="'+cls+'">'+(c.gain>=0?'+':'')+money(c.gain)+' ('+(c.gain>=0?'+':'')+c.pct.toFixed(1)+'%)</span></div>'+
         '</div>';
+    }
+    for (const b of (g.bonds||[])){
+      const bc = bondCalc(b);
+      html += '<div class="holdrow"><div class="hd-line1"><span class="hd-name">'+esc(b.name)+'<span class="sym">Bond</span></span>'+
+        '<span class="hd-value">'+money(bc.mv)+'</span></div>'+
+        '<div class="hd-line2"><span class="hd-dim">'+esc(b.ccy)+' &middot; '+money(b.face)+' face @ '+(b.price!=null?b.price.toFixed(2):'100')+' &middot; '+(b.couponPct||0)+'% &middot; due '+esc(b.maturity||'')+'</span></div></div>';
     }
     for (const c of g.cash)
       html += '<div class="holdrow"><div class="hd-line1"><span class="hd-name">Cash<span class="sym">'+esc(c.ccy)+'</span></span><span class="hd-value">'+money(c.amount)+'</span></div></div>';
@@ -965,6 +995,11 @@ function computeBreakdown(mode){
     add(mode==='sector'?sectorOf(h): mode==='class'?(h.cls||'Equity'): mode==='ccy'?h.ccy: acctKey(h), v,
       {name:h.name, entity:h.entity||'', value:v});
   }
+  for (const b of BONDS){
+    const v = bondCalc(b).mv*(f[b.ccy]||1);
+    add(mode==='sector'?'Fixed Income': mode==='class'?'Fixed Income': mode==='ccy'?b.ccy: acctKey(b), v,
+      {name:b.name, entity:b.entity||'', value:v});
+  }
   for (const c of CASH){
     const v = c.amount*(f[c.ccy]||1);
     add(mode==='sector'?'Cash & Other': mode==='class'?'Cash': mode==='ccy'?c.ccy: acctKey(c), v,
@@ -1049,6 +1084,7 @@ const TAX_CORP_ENTITIES = ['SAJE','SCMPC','AGMPC'];
 const TAX_INCLUSION = 0.5;      // capital gains inclusion rate (50%, confirmed unchanged for 2026)
 const TAX_CORP_RATE = 0.5017;   // combined federal+Ontario CCPC tax rate on aggregate investment income (2026)
 const TAX_REFUNDABLE = 0.3067;  // portion of the above added to NERDTOH, refundable at 38.33% of taxable dividends paid
+const TAX_PERSONAL_MARGINAL = 0.5353; // Ontario top combined marginal rate — applied to personal non-registered interest income
 function computeCorpTax(entityName){
   const f = fx || STATIC_FX;
   const rows = HOLDINGS.filter(h=>(h.entity||'').trim().toUpperCase() === entityName.toUpperCase());
@@ -1231,6 +1267,81 @@ function divTaxCalc(grossCAD, divType, whtPct){
   }
   return {taxOwed:null, refundable:null, netTaxCost:null, afterTax:null, whtAmt:0, note:'Unclassified — set Dividend type on Holdings → Edit'};
 }
+/* ---------------- fixed income tab + interest income ---------------- */
+function interestRows(){
+  const f = fx || STATIC_FX;
+  const rows = [];
+  for (const b of BONDS){
+    const bc = bondCalc(b);
+    rows.push({kind:'Bond', name:b.name, h:b, ccy:b.ccy, value:bc.mv, gross:bc.income, grossCAD:bc.income*(f[b.ccy]||1)});
+  }
+  for (const h of HOLDINGS){
+    const r = ISA_RATE(h);
+    if (r>0){
+      const mv = rowCalc(h).mv;
+      rows.push({kind:'ISA', name:h.name, h, ccy:h.ccy, value:mv, gross:mv*r/100, grossCAD:mv*r/100*(f[h.ccy]||1)});
+    }
+  }
+  return rows;
+}
+function interestTax(row){
+  const at = (row.h.atype||'').toUpperCase();
+  const corp = TAX_CORP_ENTITIES.some(e=>(row.h.entity||'').trim().toUpperCase()===e.toUpperCase());
+  if (at.includes('TFSA')) return {label:'TFSA — tax-free', netCAD:row.grossCAD};
+  if (at.includes('RRSP')||at.includes('RESP')||at.includes('RRIF')) return {label:at.includes('RESP')?'RESP — deferred':'RRSP — deferred', netCAD:row.grossCAD};
+  if (corp) return {label:'corp AII '+(TAX_CORP_RATE*100).toFixed(2)+'%', netCAD:row.grossCAD*(1-TAX_CORP_RATE), refundCAD:row.grossCAD*TAX_REFUNDABLE};
+  return {label:'personal '+(TAX_PERSONAL_MARGINAL*100).toFixed(2)+'%', netCAD:row.grossCAD*(1-TAX_PERSONAL_MARGINAL)};
+}
+function renderFI(){
+  const f = fx || STATIC_FX;
+  const usd = v => v / (f.USD||1); // CAD -> USD
+  let html = '<div class="card"><h2>Fixed income</h2>'+
+    '<p class="hint">Bonds and GICs held across accounts, plus interest-bearing cash equivalents (broker savings funds with a stated rate). '+
+    'Yearly income = face &times; coupon (bonds) or balance &times; rate (cash equivalents). Values are as-imported; bond prices are not live.</p></div>';
+  if (!BONDS.length){
+    html += '<div class="card"><p class="hint">No bonds in the data. Import a portfolio JSON with a "bonds" array via the Data tab.</p></div>';
+  } else {
+    let tUSD=0, tCAD=0, iUSD=0, iCAD=0;
+    html += '<div class="card"><h2>Bonds &amp; GICs</h2><div class="twrap"><table class="fit">'+
+      '<tr><th>Security</th><th>Entity</th><th>Face</th><th>Coupon</th><th>Maturity</th><th>Value (native)</th><th>Value (US$)</th><th>Income/yr (native)</th><th>Income/yr (US$)</th></tr>';
+    for (const b of BONDS){
+      const bc = bondCalc(b);
+      const vCAD = bc.mv*(f[b.ccy]||1), inCAD = bc.income*(f[b.ccy]||1);
+      tCAD += vCAD; tUSD += usd(vCAD); iCAD += inCAD; iUSD += usd(inCAD);
+      html += '<tr><td class="nm">'+esc(b.name)+'</td><td>'+esc(b.entity)+'</td>'+
+        '<td>'+esc(b.ccy)+' '+money(b.face)+'</td><td>'+(b.couponPct||0).toFixed(2)+'%</td><td>'+esc(b.maturity||'')+'</td>'+
+        '<td>'+esc(b.ccy)+' '+money(bc.mv)+'</td><td>US$ '+money(usd(vCAD))+'</td>'+
+        '<td>'+esc(b.ccy)+' '+money(bc.income)+'</td><td>US$ '+money(usd(inCAD))+'</td></tr>';
+    }
+    html += '<tr><td class="nm"><b>Total</b></td><td></td><td></td><td></td><td></td>'+
+      '<td><b>CA$ '+money(tCAD)+'</b></td><td><b>US$ '+money(tUSD)+'</b></td>'+
+      '<td><b>CA$ '+money(iCAD)+'</b></td><td><b>US$ '+money(iUSD)+'</b></td></tr>'+
+      '</table></div><p class="hint">Native totals converted to CA$ / US$ at USD/CAD '+(f.USD||1).toFixed(4)+'.</p></div>';
+  }
+  const isas = interestRows().filter(r=>r.kind==='ISA');
+  if (isas.length){
+    let vCADt=0, iCADt=0;
+    html += '<div class="card"><h2>Interest-bearing cash equivalents</h2><div class="twrap"><table class="fit">'+
+      '<tr><th>Fund</th><th>Entity</th><th>Balance (native)</th><th>Balance (US$)</th><th>Rate</th><th>Income/yr (native)</th><th>Income/yr (US$)</th></tr>';
+    for (const r of isas){
+      const vCAD = r.value*(f[r.ccy]||1);
+      vCADt += vCAD; iCADt += r.grossCAD;
+      html += '<tr><td class="nm">'+esc(r.name)+'</td><td>'+esc(r.h.entity)+'</td>'+
+        '<td>'+esc(r.ccy)+' '+money(r.value)+'</td><td>US$ '+money(usd(vCAD))+'</td>'+
+        '<td>'+ISA_RATE(r.h).toFixed(2)+'%</td><td>'+esc(r.ccy)+' '+money(r.gross)+'</td><td>US$ '+money(usd(r.grossCAD))+'</td></tr>';
+    }
+    html += '<tr><td class="nm"><b>Total</b></td><td></td><td><b>CA$ '+money(vCADt)+'</b></td><td><b>US$ '+money(usd(vCADt))+'</b></td><td></td>'+
+      '<td><b>CA$ '+money(iCADt)+'</b></td><td><b>US$ '+money(usd(iCADt))+'</b></td></tr></table></div></div>';
+  }
+  const all = interestRows();
+  if (all.length){
+    const g = all.reduce((a,r)=>a+r.grossCAD,0);
+    const n = all.reduce((a,r)=>a+interestTax(r).netCAD,0);
+    html += '<div class="card"><p class="hint">Total interest run-rate: CA$ '+money(g)+' gross / CA$ '+money(n)+' after tax per year — detail on the Income tab.</p></div>';
+  }
+  view().innerHTML = html;
+}
+
 function renderDividends(){
   if (!HOLDINGS.length){ renderFirstRun(); return; }
   const f = fx || STATIC_FX;
@@ -1245,7 +1356,7 @@ function renderDividends(){
     ? 'History cached '+new Date(age.newest).toLocaleDateString('en-CA')+(age.oldest!==age.newest?' (oldest '+new Date(age.oldest).toLocaleDateString('en-CA')+')':'')+' &middot; auto-refreshes after 30 days.'+(staleDivs.length?' Updating '+staleDivs.length+' symbol'+(staleDivs.length===1?'':'s')+' in the background&hellip;':'')
     : (staleDivs.length ? 'No cached history yet — fetching in the background&hellip;' : '');
 
-  let html = '<div class="card"><h2>Dividends &amp; distributions</h2>'+
+  let html = '<div class="card"><h2>Income &mdash; dividends &amp; distributions</h2>'+
     '<p class="hint">Absolute (gross) income for all holdings; estimated after-tax income for corporate accounts (SAJE, SCMPC, AGMPC) only. '+
     'Rates/dates are either manually entered (Holdings &rarr; Edit) or auto-derived from trailing Yahoo dividend history when available — projected forward, not guaranteed. Estimate only, not tax advice.</p>'+
     '<div class="bar"><button class="sm" onclick="refreshDivData(true)">Re-fetch all dividend history</button></div>'+
@@ -1278,6 +1389,30 @@ function renderDividends(){
   }
   html += '<tr><td class="nm"><b>Total</b></td><td><b>'+money(sumGross)+'</b></td><td><b>'+money(sumAfter)+'</b></td></tr>';
   html += '</table></div><p class="hint">After-tax only computed for corporate accounts (Ontario CCPC rates): Canadian eligible/non-eligible dividends &mdash; Part IV tax '+(38.33).toFixed(2)+'% (fully refundable via RDTOH when the corp pays out dividends); foreign dividends &mdash; '+(TAX_CORP_RATE*100).toFixed(2)+'% AII rate with foreign WHT credited. Dividend type is auto-inferred from the listing when not set (TSX/Canadian issuers &rarr; Canadian eligible; others &rarr; foreign, 15% WHT) — override via Holdings &rarr; Edit &rarr; Dividend type. * = could not infer (no symbol), shown at gross.</p></div>';
+
+  // ---- interest income (bonds, GICs, interest-bearing cash equivalents) ----
+  const irows = interestRows();
+  if (irows.length){
+    let ig=0, inet=0, iref=0;
+    html += '<div class="card"><h2>Interest income &mdash; fixed income &amp; cash equivalents</h2>'+
+      '<div class="twrap"><table class="fit"><tr><th>Security</th><th>Account</th><th>Gross/yr</th><th>Gross/yr (CA$)</th><th>Tax treatment</th><th>After-tax/yr (CA$)</th></tr>';
+    for (const r of irows){
+      const t = interestTax(r);
+      ig += r.grossCAD; inet += t.netCAD; iref += (t.refundCAD||0);
+      html += '<tr><td class="nm">'+esc(r.name)+'<br><span class="sym">'+r.kind+'</span></td><td>'+esc(acctKey(r.h))+'</td>'+
+        '<td>'+esc(r.ccy)+' '+money(r.gross)+'</td><td>'+money(r.grossCAD)+'</td>'+
+        '<td class="nm">'+esc(t.label)+'</td><td>'+money(t.netCAD)+'</td></tr>';
+    }
+    html += '<tr><td class="nm"><b>Total interest</b></td><td></td><td></td><td><b>'+money(ig)+'</b></td><td></td><td><b>'+money(inet)+'</b></td></tr>'+
+      '</table></div><p class="hint">Interest is fully taxable: corporate accounts at the '+(TAX_CORP_RATE*100).toFixed(2)+'% AII rate'+(iref>0?' (of which CA$ '+money(iref)+'/yr is refundable via RDTOH when taxable dividends are paid out)':'')+
+      '; personal non-registered at the '+(TAX_PERSONAL_MARGINAL*100).toFixed(2)+'% top Ontario marginal rate; TFSA tax-free; RRSP/RESP deferred (shown at gross). Estimates only, not tax advice.</p></div>';
+    html += '<div class="card"><h2>Total income run-rate</h2><div class="twrap"><table class="fit">'+
+      '<tr><th></th><th>Gross/yr (CA$)</th><th>After-tax/yr (CA$)</th></tr>'+
+      '<tr><td class="nm">Dividends &amp; distributions</td><td>'+money(sumGross)+'</td><td>'+money(sumAfter)+'</td></tr>'+
+      '<tr><td class="nm">Interest</td><td>'+money(ig)+'</td><td>'+money(inet)+'</td></tr>'+
+      '<tr><td class="nm"><b>Total</b></td><td><b>'+money(sumGross+ig)+'</b></td><td><b>'+money(sumAfter+inet)+'</b></td></tr></table></div>'+
+      '<p class="hint">Dividend after-tax figures are corporate accounts only (personal dividends shown at gross); interest after-tax covers all account types as noted above.</p></div>';
+  }
 
   // preferred share subtotal
   const prefs = paying.filter(x=>x.h.cls==='Preferred');
